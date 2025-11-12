@@ -4,7 +4,13 @@ const {
 const StudentType = require('../types/StudentType');
 const { listEntities } = require('../../fakeDb');
 
-const resolver = () => {
+const resolver = (_, args, context) => {
+    const isAdminUser = context.user.role === "admin";
+
+    if(!isAdminUser) {
+        return [];
+    }
+    
     return listEntities('students');
 }
 

@@ -1,4 +1,18 @@
 const db = {
+    users: [
+        {
+            id: 0,
+            role: "admin",
+            username: "virgil",
+            password: "password",
+        },
+        {
+            id: 1,
+            role: "student",
+            username: "a",
+            password: "a",
+        }
+    ],
     students: [
         {
             id: 1,
@@ -16,9 +30,12 @@ const db = {
 }
 
 const findEntity = (entity, id) => {
-    console.log('db: findEntity', db);
     return db[entity].find(entity => entity.id === id);
 };
+
+const findUserByUsername = (username) => {
+    return db.users.find(user => user.username === username);
+}
 
 const createEntity = (entity, data) => {
     data.id = db[entity].length + 1;
@@ -46,4 +63,4 @@ const listEntities = (entity) => {
     return db[entity];
 };
 
-module.exports = { db, findEntity, updateEntity, createEntity, deleteEntity, listEntities };
+module.exports = { db, findEntity, findUserByUsername, updateEntity, createEntity, deleteEntity, listEntities };
