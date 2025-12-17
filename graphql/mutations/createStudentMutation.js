@@ -1,6 +1,7 @@
 const StudentType = require("../types/StudentType");
 const CreateStudentInputType = require("../inputTypes/CreateStudentInputType");
 const db = require("../../models");
+const { pubsub, STUDENT_CREATED } = require('../../websocket/pubsub');
 
 const createStudentMutation = {
             type: StudentType,
@@ -17,6 +18,8 @@ const createStudentMutation = {
                     lastName,
                     age,
                 });
+
+                pubsub.publish(STUDENT_CREATED, { student });
 
                 return student;
 

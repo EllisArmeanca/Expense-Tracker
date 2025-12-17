@@ -1,6 +1,12 @@
 const { app, port } = require("./app");
+const http = require('http');
+const setupWebsocketServer = require("./websocket/server");
 
-app.listen(port, (error) => {
+const httpServer = http.createServer(app);
+
+setupWebsocketServer(httpServer);
+
+httpServer.listen(port, (error) => {
     if(error) {
         console.error(error);
     }
