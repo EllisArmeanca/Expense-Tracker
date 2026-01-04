@@ -1,3 +1,5 @@
+/// autentificarea facuta de middleware 
+
 const jwt = require("jsonwebtoken");
 
 const db = require('../models');

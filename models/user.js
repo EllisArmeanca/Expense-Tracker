@@ -1,16 +1,20 @@
+// models/user.js
 'use strict';
-const {
-  Model
-} = require('sequelize');
+const { Model } = require('sequelize');
 module.exports = (sequelize, DataTypes) => {
   class User extends Model {
-    /**
-     * Helper method for defining associations.
-     * This method is not a part of Sequelize lifecycle.
-     * The `models/index` file will call this method automatically.
-     */
     static associate(models) {
-      // define association here
+      // 1:1
+      User.hasOne(models.Settings, { foreignKey: 'userId', onDelete: 'CASCADE' });
+      // 1:M
+      User.hasMany(models.Expense, { foreignKey: 'userId', onDelete: 'CASCADE' });
+      // M:M
+      User.belongsToMany(models.Budget, {
+        through: models.UserBudget,
+        foreignKey: 'userId',
+        otherKey: 'budgetId',
+        onDelete: 'CASCADE'
+      });
     }
   }
   User.init({
