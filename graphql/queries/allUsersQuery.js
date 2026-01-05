@@ -22,7 +22,7 @@ const allUsersQuery = {
         include: [
           {
             model: db.Settings,
-            as: 'settings',
+            as: 'Setting',
             attributes: ['id', 'currency', 'timezone']
           }
           // Expenses are excluded here for performance — can be added per user if needed

@@ -20,7 +20,7 @@ const budgetsQuery = {
         include: [
           {
             model: db.User,
-            as: 'users',
+            as: 'Users',
             attributes: ['id', 'username']
           }
         ],

@@ -5,7 +5,7 @@
 // Returns the full category object with its ID and name.
 
 const CategoryType = require("../types/CategoryType");
-const CreateCategoryInputType = require("../inputTypes/CreateCategoryInputType");
+const CreateCategoryInputType = require("../inputTypes/createCategoryInputType");
 const db = require("../../models");
 const { requireUser } = require("../../utils/auth");
 const { GraphQLError } = require("graphql");

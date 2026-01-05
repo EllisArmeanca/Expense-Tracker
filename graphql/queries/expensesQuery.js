@@ -40,12 +40,12 @@ const expensesQuery = {
         include: [
           {
             model: db.User,
-            as: 'user',
+            as: 'User',
             attributes: ['id', 'username']
           },
           {
             model: db.Category,
-            as: 'category',
+            as: 'Category',
             attributes: ['id', 'name']
           }
         ],

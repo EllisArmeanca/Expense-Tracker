@@ -1,36 +1,25 @@
-// ExpenseType.js
-// Defines the GraphQL representation of an Expense.
-// Includes nested relations to avoid exposing raw IDs:
-// - user: the owner of the expense (1:1 relation)
-// - category: the category this expense belongs to (optional, 1:1 relation)
-// Ensures clients receive full objects (e.g., category { id, name }) instead of just IDs.
+// UserType.js
+const { GraphQLObjectType, GraphQLInt, GraphQLString, GraphQLList } = require('graphql');
+const SettingsType = require('./SettingsType');
 
-const { GraphQLObjectType, GraphQLInt, GraphQLString, GraphQLFloat } = require('graphql');
-const UserType = require('./UserType');
-const CategoryType = require('./CategoryType');
+// Import lazy
+const ExpenseType = () => require('./ExpenseType');
 
-const ExpenseType = new GraphQLObjectType({
-  name: "Expense",
-  fields: {
-    id: {
-      type: GraphQLInt,
+const UserType = new GraphQLObjectType({
+  name: "User",
+  fields: () => ({
+    id: { type: GraphQLInt },
+    username: { type: GraphQLString },
+    role: { type: GraphQLString },
+    settings: {
+      type: SettingsType,
+      resolve: (parent) => parent.Setting // ← cheia: mappează "Setting" → "settings"
     },
-    description: {
-      type: GraphQLString,
-    },
-    amount: {
-      type: GraphQLFloat,
-    },
-    date: {
-      type: GraphQLString,
-    },
-    user: {
-      type: UserType, 
-    },
-    category: {
-      type: CategoryType, 
+    expenses: {
+      type: new GraphQLList(ExpenseType()),
+      resolve: (parent) => parent.Expenses // ← cheia: mappează "Expenses" → "expenses"
     }
-  }
+  })
 });
 
-module.exports = ExpenseType;
+module.exports = UserType;

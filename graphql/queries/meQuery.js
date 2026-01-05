@@ -22,17 +22,17 @@ const meQuery = {
         include: [
           {
             model: db.Settings,
-            as: 'settings',
+            as: 'Setting',
             attributes: ['id', 'currency', 'timezone']
           },
           {
             model: db.Expense,
-            as: 'expenses',
+            as: 'Expenses',
             attributes: ['id', 'description', 'amount', 'date'],
             include: [
               {
                 model: db.Category,
-                as: 'category',
+                as: 'Category',
                 attributes: ['id', 'name']
               }
             ]

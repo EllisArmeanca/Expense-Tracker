@@ -5,7 +5,7 @@
 // Returns the full expense object with nested user and category.
 
 const ExpenseType = require("../types/ExpenseType");
-const CreateExpenseInputType = require("../inputTypes/CreateExpenseInputType");
+const CreateExpenseInputType = require("../inputTypes/createExpenseInputType");
 const db = require("../../models");
 const { requireUser } = require("../../utils/auth");
 const { GraphQLError } = require("graphql");
