@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { EyeIcon, EyeOffIcon, Github, Mail } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { toast } from 'sonner';
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -22,13 +23,14 @@ const Login = () => {
     try {
       const result = await login({ email, password });
       if (result.success) {
+        toast.success('Login successful!');
         // Redirect to dashboard after successful login
         navigate('/dashboard');
       } else {
-        console.error('Login error:', result.error);
+        toast.error(`Login failed: ${result.error}`);
       }
     } catch (error) {
-      console.error('Login error:', error);
+      toast.error(`Login failed: ${error.message}`);
     } finally {
       setLoading(false);
     }

@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { EyeIcon, EyeOffIcon } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { toast } from 'sonner';
 
 const Register = () => {
   const [name, setName] = useState('');
@@ -23,13 +24,20 @@ const Register = () => {
     try {
       const result = await register({ name, email, password });
       if (result.success) {
-        // Redirect to dashboard after successful registration
-        navigate('/dashboard');
+        toast.success('Registration successful! Please log in with your credentials.');
+        // Optionally clear form fields
+        setName('');
+        setEmail('');
+        setPassword('');
+        // Navigate to login page after a delay
+        setTimeout(() => {
+          navigate('/login');
+        }, 2000); // Wait 2 seconds before navigating
       } else {
-        console.error('Registration error:', result.error);
+        toast.error(`Registration failed: ${result.error}`);
       }
     } catch (error) {
-      console.error('Registration error:', error);
+      toast.error(`Registration failed: ${error.message}`);
     } finally {
       setLoading(false);
     }

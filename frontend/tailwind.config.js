@@ -5,5 +5,6 @@ export default {
     "./src/**/*.{js,ts,jsx,tsx}",
   ],
   darkMode: ["class"],
-  plugins: [],
+  plugins: [
+  ],
 }
