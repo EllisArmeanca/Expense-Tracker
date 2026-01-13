@@ -13,6 +13,3 @@ export const sequelize = new Sequelize(process.env.DATABASE_URL, {
     idle: 10000
   }
 });
-
-// Import all models to ensure associations are set up
-import('../models/index.js');

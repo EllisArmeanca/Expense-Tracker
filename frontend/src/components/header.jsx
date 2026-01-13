@@ -52,6 +52,16 @@ const Header = () => {
                   <Home className="mr-2 h-4 w-4" />
                   Dashboard
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate('/components')}>
+                  <Home className="mr-2 h-4 w-4" />
+                  Components
+                </DropdownMenuItem>
+                {user?.isAdmin && (
+                  <DropdownMenuItem onClick={() => navigate('/admin')}>
+                    <Home className="mr-2 h-4 w-4" />
+                    Admin Dashboard
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem onClick={handleLogout}>
                   <LogOut className="mr-2 h-4 w-4" />
                   Logout

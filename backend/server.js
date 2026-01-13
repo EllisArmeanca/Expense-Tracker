@@ -5,11 +5,40 @@ import dotenv from 'dotenv';
 import rateLimit from 'express-rate-limit';
 import jwt from 'jsonwebtoken';
 import { createHandler } from 'graphql-http/lib/use/express';
-import { schema, rootValue } from './src/graphql/schema.js';
+import { schema } from './src/graphql/schema.js';
 import authenticateToken from './src/middleware/auth.js';
 import { sequelize } from './config/database.js'; // Import sequelize instance
+import winston from 'winston';
+import db from './models/index.js';
 
 dotenv.config();
+
+// Configure Winston logger
+const logger = winston.createLogger({
+  level: process.env.LOG_LEVEL || 'info',
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.errors({ stack: true }),
+    winston.format.splat(),
+    winston.format.json()
+  ),
+  defaultMeta: { service: 'expense-tracker-backend' },
+  transports: [
+    new winston.transports.Console({
+      format: winston.format.combine(
+        winston.format.colorize(),
+        winston.format.simple()
+      )
+    }),
+    ...(process.env.NODE_ENV !== 'development'
+      ? [
+        new winston.transports.File({ filename: 'logs/error.log', level: 'error' }),
+        new winston.transports.File({ filename: 'logs/combined.log' })
+      ]
+      : []
+    )
+  ]
+});
 
 const app = express();
 
@@ -25,31 +54,57 @@ app.use(rateLimit({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Middleware to attach user to request if authenticated (but not required for all routes)
-app.use('/graphql', (req, res, next) => {
-  // Try to authenticate the user but don't fail if token is invalid/missing
-  // This allows both authenticated and unauthenticated queries to work
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
+// Request logging middleware
+app.use((req, res, next) => {
+  logger.info(`${req.method} ${req.path}`, {
+    ip: req.ip,
+    userAgent: req.get('User-Agent'),
+    timestamp: new Date().toISOString()
+  });
 
-  if (token) {
-    try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      req.token = token;
-      req.decoded = decoded;
-    } catch (error) {
-      // Token is invalid, but continue with request as some operations may not require auth
-    }
-  }
+  const originalSend = res.send;
+  res.send = function (body) {
+    logger.info(`${req.method} ${req.path} - ${res.statusCode}`, {
+      statusCode: res.statusCode,
+      contentLength: body ? Buffer.byteLength(body, 'utf8') : 0
+    });
+    originalSend.call(this, body);
+  };
 
   next();
 });
 
+
 // GraphQL endpoint with context
 app.use('/graphql', createHandler({
   schema,
-  context: (req) => {
-    return { req }; // Pass the request object to resolvers
+  context: async (req) => {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+
+    let user = null;
+    if (token) {
+      try {
+        // Verify token with OAuth-compliant claims checking
+        const decoded = jwt.verify(token, process.env.JWT_SECRET, {
+          algorithms: ['HS256'],  // Specify allowed algorithms
+          issuer: 'expense-tracker',  // Validate issuer
+          audience: 'expense-tracker-users'  // Validate audience
+        });
+
+        // Fetch the user from the database using the subject claim (sub)
+        user = await db.User.findByPk(decoded.sub, {
+          attributes: { exclude: ['password'] }
+        });
+      } catch (error) {
+        // Token is invalid, but continue with request as some operations may not require auth
+        // Log the error for debugging purposes
+        console.log('JWT verification failed:', error.message);
+      }
+    }
+
+    // Return context with request and user info
+    return { req, user };
   }
 }));
 
@@ -65,19 +120,24 @@ sequelize.authenticate()
   .then(async () => {
     console.log('Database connection established successfully.');
 
-    // Sync the models with the database
-    await sequelize.sync();
-    console.log('Database synchronized.');
+    // Run migrations to ensure the database is up to date
+    logger.info('Running database migrations...');
+    try {
+      await sequelize.sync({ force: false }); // Sync models to create tables if they don't exist
+      logger.info('Database synchronized successfully.');
+    } catch (syncError) {
+      logger.error('Database synchronization failed:', { error: syncError.message });
+      throw syncError;
+    }
 
     app.listen(PORT, () => {
-      console.log(`Server is running on port ${PORT}`);
-      console.log(`GraphQL endpoint: http://localhost:${PORT}/graphql`);
-      console.log(`Frontend: http://localhost:${PORT}/`);
-      console.log('To use GraphQL development tools, you can use a standalone client like Altair, GraphQL Playground, or Apollo Studio');
+      logger.info(`Server is running on port ${PORT}`);
+      logger.info(`GraphQL endpoint: http://localhost:${PORT}/graphql`);
+      logger.info(`Health check endpoint: http://localhost:${PORT}/health`);
     });
   })
   .catch(err => {
-    console.error('Unable to connect to the database:', err);
+    logger.error('Unable to connect to the database:', { error: err.message });
     process.exit(1);
   });
 

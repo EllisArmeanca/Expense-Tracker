@@ -17,6 +17,7 @@ class AuthService {
                 id
                 name
                 email
+                isAdmin
               }
             }
           }
@@ -54,6 +55,7 @@ class AuthService {
                 id
                 name
                 email
+                isAdmin
               }
             }
           }

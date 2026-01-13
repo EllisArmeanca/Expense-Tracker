@@ -1,36 +1,33 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogDescription, 
-  DialogHeader, 
-  DialogTitle, 
-  DialogTrigger 
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger
 } from '@/components/ui/dialog';
-import { 
-  DropdownMenu, 
-  DropdownMenuContent, 
-  DropdownMenuItem, 
-  DropdownMenuTrigger 
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { AlertCircle, Plus, MoreHorizontal, Trash2, Edit3 } from 'lucide-react';
-import { Separator } from '@/components/ui/separator';  
+import { AlertCircle, Plus, MoreHorizontal, Trash2, Edit3, Users, ShieldCheck } from 'lucide-react';
+import { Separator } from '@/components/ui/separator';
 import { useAuth } from '@/contexts/AuthContext';
+import { toast } from 'sonner';
 
 const Dashboard = () => {
   const { user } = useAuth();
-  const [expenses, setExpenses] = useState([
-    { id: 1, title: 'Groceries', amount: 85.30, category: 'Food', date: '2024-01-10', description: 'Weekly groceries' },
-    { id: 2, title: 'Gas', amount: 45.00, category: 'Transport', date: '2024-01-09', description: 'Fill up car tank' },
-    { id: 3, title: 'Netflix', amount: 15.99, category: 'Entertainment', date: '2024-01-08', description: 'Monthly subscription' },
-  ]);
-  
+  const [expenses, setExpenses] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [showAddExpenseDialog, setShowAddExpenseDialog] = useState(false);
   const [newExpense, setNewExpense] = useState({
     title: '',
@@ -40,38 +37,162 @@ const Dashboard = () => {
     description: ''
   });
 
+  // Load user's expenses from backend
+  useEffect(() => {
+    fetchExpenses();
+  }, []);
+
+  const fetchExpenses = async () => {
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:4000'}/graphql`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+        },
+        body: JSON.stringify({
+          query: `
+            query GetExpenses {
+              expenses {
+                id
+                title
+                amount
+                category
+                date
+                description
+                createdAt
+              }
+            }
+          `
+        })
+      });
+
+      const result = await response.json();
+
+      if (result.errors) {
+        throw new Error(result.errors[0].message);
+      }
+
+      setExpenses(result.data.expenses || []);
+    } catch (error) {
+      toast.error(`Failed to load expenses: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Create a new expense
+  const handleAddExpense = async (e) => {
+    e.preventDefault();
+
+    if (!newExpense.title || !newExpense.amount) {
+      toast.error('Please fill in all required fields');
+      return;
+    }
+
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:4000'}/graphql`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+        },
+        body: JSON.stringify({
+          query: `
+            mutation CreateExpense($title: String!, $amount: Float!, $category: String!, $date: String!, $userId: ID!) {
+              createExpense(title: $title, amount: $amount, category: $category, date: $date, userId: $userId) {
+                id
+                title
+                amount
+                category
+                date
+                description
+                createdAt
+              }
+            }
+          `,
+          variables: {
+            title: newExpense.title,
+            amount: parseFloat(newExpense.amount),
+            category: newExpense.category,
+            date: newExpense.date,
+            userId: user.id // Use the authenticated user's ID
+          }
+        })
+      });
+
+      const result = await response.json();
+
+      if (result.errors) {
+        throw new Error(result.errors[0].message);
+      }
+
+      // Add the new expense to the list
+      setExpenses([result.data.createExpense, ...expenses]);
+
+      // Reset form
+      setNewExpense({
+        title: '',
+        amount: '',
+        category: 'Food',
+        date: new Date().toISOString().split('T')[0],
+        description: ''
+      });
+      setShowAddExpenseDialog(false);
+      
+      toast.success('Expense added successfully!');
+    } catch (error) {
+      toast.error(`Failed to add expense: ${error.message}`);
+    }
+  };
+
+  // Delete an expense
+  const handleDeleteExpense = async (id) => {
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:4000'}/graphql`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+        },
+        body: JSON.stringify({
+          query: `
+            mutation DeleteExpense($id: ID!) {
+              deleteExpense(id: $id)
+            }
+          `,
+          variables: { id }
+        })
+      });
+
+      const result = await response.json();
+
+      if (result.errors) {
+        throw new Error(result.errors[0].message);
+      }
+
+      // Remove the expense from the list
+      setExpenses(expenses.filter(expense => expense.id !== id));
+      toast.success('Expense deleted successfully!');
+    } catch (error) {
+      toast.error(`Failed to delete expense: ${error.message}`);
+    }
+  };
+
   const totalExpenses = expenses.reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
-  const monthlyExpenses = expenses.filter(e => e.date.startsWith('2024-01')).reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
+  const monthlyExpenses = expenses.filter(e => new Date(e.date).getMonth() === new Date().getMonth()).reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
   const categories = [...new Set(expenses.map(e => e.category))];
 
-  const handleAddExpense = (e) => {
-    e.preventDefault();
-    
-    if (!newExpense.title || !newExpense.amount) return;
-    
-    const expense = {
-      id: expenses.length + 1,
-      title: newExpense.title,
-      amount: parseFloat(newExpense.amount),
-      category: newExpense.category,
-      date: newExpense.date,
-      description: newExpense.description
-    };
-    
-    setExpenses([expense, ...expenses]);
-    setNewExpense({
-      title: '',
-      amount: '',
-      category: 'Food',
-      date: new Date().toISOString().split('T')[0],
-      description: ''
-    });
-    setShowAddExpenseDialog(false);
-  };
-
-  const handleDeleteExpense = (id) => {
-    setExpenses(expenses.filter(expense => expense.id !== id));
-  };
+  if (loading) {
+    return (
+      <div className="container mx-auto py-10 flex items-center justify-center">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+          <p className="mt-2">Loading your dashboard...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto py-10">
@@ -79,98 +200,116 @@ const Dashboard = () => {
         <div>
           <h1 className="text-3xl font-bold">Dashboard</h1>
           <p className="text-muted-foreground">Welcome back, <span className="font-semibold">{user?.name || 'User'}!</span></p>
+          
+          {user?.isAdmin && (
+            <div className="mt-2 flex items-center gap-2 text-sm text-blue-600 bg-blue-50 p-2 rounded-md">
+              <ShieldCheck className="h-4 w-4" />
+              <span>You have admin privileges</span>
+            </div>
+          )}
         </div>
-        
-        <Dialog open={showAddExpenseDialog} onOpenChange={setShowAddExpenseDialog}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              Add Expense
+
+        <div className="flex flex-wrap gap-2">
+          {user?.isAdmin && (
+            <Button variant="outline" onClick={() => window.location.href = '/admin'}>
+              <ShieldCheck className="mr-2 h-4 w-4" />
+              Admin Panel
             </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Add New Expense</DialogTitle>
-              <DialogDescription>
-                Enter the details for your new expense
-              </DialogDescription>
-            </DialogHeader>
-            
-            <form onSubmit={handleAddExpense} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="title">Title</Label>
-                <Input
-                  id="title"
-                  value={newExpense.title}
-                  onChange={(e) => setNewExpense({...newExpense, title: e.target.value})}
-                  required
-                />
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="amount">Amount</Label>
-                <Input
-                  id="amount"
-                  type="number"
-                  step="0.01"
-                  value={newExpense.amount}
-                  onChange={(e) => setNewExpense({...newExpense, amount: e.target.value})}
-                  required
-                />
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="category">Category</Label>
-                <Select 
-                  value={newExpense.category} 
-                  onValueChange={(value) => setNewExpense({...newExpense, category: value})}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Food">Food</SelectItem>
-                    <SelectItem value="Transport">Transport</SelectItem>
-                    <SelectItem value="Entertainment">Entertainment</SelectItem>
-                    <SelectItem value="Shopping">Shopping</SelectItem>
-                    <SelectItem value="Health">Health</SelectItem>
-                    <SelectItem value="Utilities">Utilities</SelectItem>
-                    <SelectItem value="Other">Other</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="date">Date</Label>
-                <Input
-                  id="date"
-                  type="date"
-                  value={newExpense.date}
-                  onChange={(e) => setNewExpense({...newExpense, date: e.target.value})}
-                  required
-                />
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="description">Description</Label>
-                <Input
-                  id="description"
-                  value={newExpense.description}
-                  onChange={(e) => setNewExpense({...newExpense, description: e.target.value})}
-                />
-              </div>
-              
-              <div className="flex justify-end space-x-2 pt-4">
-                <Button type="button" variant="outline" onClick={() => setShowAddExpenseDialog(false)}>
-                  Cancel
-                </Button>
-                <Button type="submit">
-                  Add Expense
-                </Button>
-              </div>
-            </form>
-          </DialogContent>
-        </Dialog>
+          )}
+          
+          <Dialog open={showAddExpenseDialog} onOpenChange={setShowAddExpenseDialog}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="mr-2 h-4 w-4" />
+                Add Expense
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Add New Expense</DialogTitle>
+                <DialogDescription>
+                  Enter the details for your new expense
+                </DialogDescription>
+              </DialogHeader>
+
+              <form onSubmit={handleAddExpense} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="title">Title</Label>
+                  <Input
+                    id="title"
+                    value={newExpense.title}
+                    onChange={(e) => setNewExpense({...newExpense, title: e.target.value})}
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="amount">Amount</Label>
+                  <Input
+                    id="amount"
+                    type="number"
+                    step="0.01"
+                    value={newExpense.amount}
+                    onChange={(e) => setNewExpense({...newExpense, amount: e.target.value})}
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="category">Category</Label>
+                  <Select
+                    value={newExpense.category}
+                    onValueChange={(value) => setNewExpense({...newExpense, category: value})}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Food">Food</SelectItem>
+                      <SelectItem value="Transport">Transport</SelectItem>
+                      <SelectItem value="Entertainment">Entertainment</SelectItem>
+                      <SelectItem value="Shopping">Shopping</SelectItem>
+                      <SelectItem value="Health">Health</SelectItem>
+                      <SelectItem value="Utilities">Utilities</SelectItem>
+                      <SelectItem value="Housing">Housing</SelectItem>
+                      <SelectItem value="Education">Education</SelectItem>
+                      <SelectItem value="Other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="date">Date</Label>
+                  <Input
+                    id="date"
+                    type="date"
+                    value={newExpense.date}
+                    onChange={(e) => setNewExpense({...newExpense, date: e.target.value})}
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="description">Description</Label>
+                  <Input
+                    id="description"
+                    value={newExpense.description}
+                    onChange={(e) => setNewExpense({...newExpense, description: e.target.value})}
+                  />
+                </div>
+
+                <div className="flex justify-end space-x-2 pt-4">
+                  <Button type="button" variant="outline" onClick={() => setShowAddExpenseDialog(false)}>
+                    Cancel
+                  </Button>
+                  <Button type="submit">
+                    Add Expense
+                  </Button>
+                </div>
+              </form>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
@@ -224,9 +363,13 @@ const Dashboard = () => {
               {expenses.map((expense) => (
                 <TableRow key={expense.id}>
                   <TableCell className="font-medium">{expense.title}</TableCell>
-                  <TableCell>{expense.category}</TableCell>
-                  <TableCell className="text-muted-foreground">{expense.description}</TableCell>
-                  <TableCell className="text-right font-medium">${expense.amount.toFixed(2)}</TableCell>
+                  <TableCell>
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary">
+                      {expense.category}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground max-w-xs truncate">{expense.description}</TableCell>
+                  <TableCell className="text-right font-medium">${parseFloat(expense.amount).toFixed(2)}</TableCell>
                   <TableCell>{new Date(expense.date).toLocaleDateString()}</TableCell>
                   <TableCell className="text-right">
                     <DropdownMenu>
@@ -240,7 +383,7 @@ const Dashboard = () => {
                           <Edit3 className="mr-2 h-4 w-4" />
                           Edit
                         </DropdownMenuItem>
-                        <DropdownMenuItem 
+                        <DropdownMenuItem
                           className="text-red-600 focus:text-red-600"
                           onClick={() => handleDeleteExpense(expense.id)}
                         >
@@ -254,7 +397,7 @@ const Dashboard = () => {
               ))}
             </TableBody>
           </Table>
-          
+
           {expenses.length === 0 && (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <AlertCircle className="h-12 w-12 text-muted-foreground mb-4" />

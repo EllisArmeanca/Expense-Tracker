@@ -43,6 +43,15 @@ services:
     stdin_open: true
     tty: true
     restart: unless-stopped
+    command: >
+      sh -c "
+        echo 'Waiting for database to be ready...' &&
+        sleep 10 &&
+        echo 'Running database migrations...' &&
+        npm run migrate &&
+        echo 'Starting the application...' &&
+        npm run dev
+      "
 
   frontend:
     build:

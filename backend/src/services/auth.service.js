@@ -8,7 +8,7 @@ const { User } = db;
 export const verifyTokenAndGetUser = async (token) => {
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    
+
     const user = await User.findByPk(decoded.id, {
       attributes: { exclude: ['password'] }
     });
@@ -32,13 +32,13 @@ export const generateToken = (payload) => {
 // Validate user credentials
 export const validateUserCredentials = async (email, password) => {
   const user = await User.findOne({ where: { email } });
-  
+
   if (!user) {
     return null; // User not found
   }
 
   const isValidPassword = await bcrypt.compare(password, user.password);
-  
+
   if (!isValidPassword) {
     return null; // Invalid password
   }

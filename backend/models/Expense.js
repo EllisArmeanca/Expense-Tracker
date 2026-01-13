@@ -1,5 +1,5 @@
 import { DataTypes } from 'sequelize';
-import { sequelize } from '../config/database.cjs';
+import { sequelize } from '../config/database.js';
 
 const Expense = sequelize.define('Expense', {
   id: {
@@ -53,6 +53,14 @@ Expense.associate = function (models) {
   Expense.belongsTo(models.User, {
     foreignKey: 'userId',
     as: 'user'
+  });
+
+  // Many-to-many relationship with tags through expense_tags junction table
+  Expense.belongsToMany(models.Tag, {
+    through: 'expense_tags',
+    foreignKey: 'expense_id',
+    otherKey: 'tag_id',
+    as: 'tags'
   });
 };
 

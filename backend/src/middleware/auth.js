@@ -13,11 +13,15 @@ export default async function authenticateToken(req, res, next) {
   }
 
   try {
-    // Verify token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    
-    // Find user based on token
-    const user = await User.findByPk(decoded.id, {
+    // Verify token with OAuth-compliant claims checking
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, {
+      algorithms: ['HS256'],  // Specify allowed algorithms
+      issuer: 'expense-tracker',  // Validate issuer
+      audience: 'expense-tracker-users'  // Validate audience
+    });
+
+    // Find user based on token (using the 'sub' claim which represents the user ID)
+    const user = await User.findByPk(decoded.sub, {
       attributes: { exclude: ['password'] } // Exclude password from result
     });
 
@@ -32,11 +36,11 @@ export default async function authenticateToken(req, res, next) {
     if (error.name === 'JsonWebTokenError') {
       return res.status(403).json({ error: 'Invalid token' });
     }
-    
+
     if (error.name === 'TokenExpiredError') {
       return res.status(403).json({ error: 'Token expired' });
     }
-    
+
     return res.status(500).json({ error: 'Authentication error' });
   }
 }

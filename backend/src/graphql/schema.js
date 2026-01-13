@@ -1,86 +1,287 @@
-import { buildSchema } from 'graphql';
+import {
+  GraphQLSchema,
+  GraphQLObjectType,
+  GraphQLString,
+  GraphQLFloat,
+  GraphQLList,
+  GraphQLNonNull,
+  GraphQLID,
+  GraphQLBoolean
+} from 'graphql';
 import { userResolvers } from './resolvers/user.resolver.js';
 import { expenseResolvers } from './resolvers/expense.resolver.js';
 
-// Import other resolvers as needed
+// Define types using GraphQL schema definition language
+const AuthResponseType = new GraphQLObjectType({
+  name: 'AuthResponse',
+  fields: () => ({
+    token: { type: new GraphQLNonNull(GraphQLString) },
+    user: { type: new GraphQLNonNull(UserType) }
+  })
+});
 
-const schemaString = `
-  type AuthResponse {
-    token: String!
-    user: User!
+const LogoutResponseType = new GraphQLObjectType({
+  name: 'LogoutResponse',
+  fields: () => ({
+    success: { type: new GraphQLNonNull(GraphQLBoolean) }
+  })
+});
+
+const UserType = new GraphQLObjectType({
+  name: 'User',
+  fields: () => ({
+    id: { type: new GraphQLNonNull(GraphQLID) },
+    name: { type: new GraphQLNonNull(GraphQLString) },
+    email: { type: new GraphQLNonNull(GraphQLString) },
+    isAdmin: { type: new GraphQLNonNull(GraphQLBoolean) },
+    expenses: { type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(ExpenseType))) },
+    createdAt: { type: new GraphQLNonNull(GraphQLString) },
+    updatedAt: { type: new GraphQLNonNull(GraphQLString) }
+  })
+});
+
+const TagType = new GraphQLObjectType({
+  name: 'Tag',
+  fields: () => ({
+    id: { type: new GraphQLNonNull(GraphQLID) },
+    name: { type: new GraphQLNonNull(GraphQLString) },
+    icon: { type: GraphQLString },
+    expenses: { type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(ExpenseType))) },
+    createdAt: { type: new GraphQLNonNull(GraphQLString) },
+    updatedAt: { type: new GraphQLNonNull(GraphQLString) }
+  })
+});
+
+const ExpenseType = new GraphQLObjectType({
+  name: 'Expense',
+  fields: () => ({
+    id: { type: new GraphQLNonNull(GraphQLID) },
+    title: { type: new GraphQLNonNull(GraphQLString) },
+    amount: { type: new GraphQLNonNull(GraphQLFloat) },
+    category: { type: new GraphQLNonNull(GraphQLString) },
+    date: { type: new GraphQLNonNull(GraphQLString) },
+    userId: { type: new GraphQLNonNull(GraphQLID) },
+    user: { type: new GraphQLNonNull(UserType) },
+    tags: { type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(TagType))) },
+    createdAt: { type: new GraphQLNonNull(GraphQLString) },
+    updatedAt: { type: new GraphQLNonNull(GraphQLString) }
+  })
+});
+
+const QueryType = new GraphQLObjectType({
+  name: 'Query',
+  fields: {
+    // User queries
+    users: {
+      type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(UserType))),
+      resolve: userResolvers.queries.users
+    },
+    user: {
+      type: UserType,
+      args: {
+        id: { type: new GraphQLNonNull(GraphQLID) }
+      },
+      resolve: userResolvers.queries.user
+    },
+    me: {
+      type: new GraphQLNonNull(UserType),
+      resolve: userResolvers.queries.me
+    },
+    // Admin-specific queries
+    adminUsers: {
+      type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(UserType))),
+      resolve: userResolvers.queries.adminUsers
+    },
+    // Expense queries
+    expenses: {
+      type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(ExpenseType))),
+      args: {
+        userId: { type: GraphQLID },
+        tagIds: { type: new GraphQLList(GraphQLID) }, // Include expense only if it has these tags
+        excludeTagIds: { type: new GraphQLList(GraphQLID) }, // Exclude expense if it has these tags
+        dateFrom: { type: GraphQLString }, // Filter from this date
+        dateTo: { type: GraphQLString }, // Filter to this date
+        withoutTags: { type: GraphQLBoolean } // Include only expenses without any tags
+      },
+      resolve: expenseResolvers.queries.expenses
+    },
+    expense: {
+      type: ExpenseType,
+      args: {
+        id: { type: new GraphQLNonNull(GraphQLID) }
+      },
+      resolve: expenseResolvers.queries.expense
+    },
+    // Tag queries
+    tags: {
+      type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(TagType))),
+      resolve: expenseResolvers.queries.tags
+    },
+    tag: {
+      type: TagType,
+      args: {
+        id: { type: new GraphQLNonNull(GraphQLID) }
+      },
+      resolve: expenseResolvers.queries.tag
+    }
   }
+});
 
-  type User {
-    id: ID!
-    name: String!
-    email: String!
-    expenses: [Expense!]!
-    createdAt: String!
-    updatedAt: String!
+const MutationType = new GraphQLObjectType({
+  name: 'Mutation',
+  fields: {
+    // Auth mutations
+    login: {
+      type: AuthResponseType,
+      args: {
+        email: { type: new GraphQLNonNull(GraphQLString) },
+        password: { type: new GraphQLNonNull(GraphQLString) }
+      },
+      resolve: userResolvers.mutations.login
+    },
+    register: {
+      type: AuthResponseType,
+      args: {
+        name: { type: new GraphQLNonNull(GraphQLString) },
+        email: { type: new GraphQLNonNull(GraphQLString) },
+        password: { type: new GraphQLNonNull(GraphQLString) }
+      },
+      resolve: userResolvers.mutations.register
+    },
+    logout: {
+      type: new GraphQLNonNull(LogoutResponseType),
+      resolve: userResolvers.mutations.logout
+    },
+    updateProfile: {
+      type: new GraphQLNonNull(UserType),
+      args: {
+        name: { type: GraphQLString },
+        email: { type: GraphQLString },
+        password: { type: GraphQLString }
+      },
+      resolve: userResolvers.mutations.updateProfile
+    },
+    // User mutations
+    createUser: {
+      type: new GraphQLNonNull(UserType),
+      args: {
+        name: { type: new GraphQLNonNull(GraphQLString) },
+        email: { type: new GraphQLNonNull(GraphQLString) },
+        password: { type: new GraphQLNonNull(GraphQLString) }
+      },
+      resolve: userResolvers.mutations.createUser
+    },
+    updateUser: {
+      type: new GraphQLNonNull(UserType),
+      args: {
+        id: { type: new GraphQLNonNull(GraphQLID) },
+        name: { type: GraphQLString },
+        email: { type: GraphQLString }
+      },
+      resolve: userResolvers.mutations.updateUser
+    },
+    deleteUser: {
+      type: new GraphQLNonNull(GraphQLBoolean),
+      args: {
+        id: { type: new GraphQLNonNull(GraphQLID) }
+      },
+      resolve: userResolvers.mutations.deleteUser
+    },
+    // Admin-specific mutations
+    promoteToAdmin: {
+      type: new GraphQLNonNull(UserType),
+      args: {
+        id: { type: new GraphQLNonNull(GraphQLID) }
+      },
+      resolve: userResolvers.mutations.promoteToAdmin
+    },
+    demoteFromAdmin: {
+      type: new GraphQLNonNull(UserType),
+      args: {
+        id: { type: new GraphQLNonNull(GraphQLID) }
+      },
+      resolve: userResolvers.mutations.demoteFromAdmin
+    },
+    // Expense mutations
+    createExpense: {
+      type: new GraphQLNonNull(ExpenseType),
+      args: {
+        title: { type: new GraphQLNonNull(GraphQLString) },
+        amount: { type: new GraphQLNonNull(GraphQLFloat) },
+        category: { type: new GraphQLNonNull(GraphQLString) },
+        date: { type: new GraphQLNonNull(GraphQLString) },
+        userId: { type: new GraphQLNonNull(GraphQLID) }
+      },
+      resolve: expenseResolvers.mutations.createExpense
+    },
+    updateExpense: {
+      type: new GraphQLNonNull(ExpenseType),
+      args: {
+        id: { type: new GraphQLNonNull(GraphQLID) },
+        title: { type: GraphQLString },
+        amount: { type: GraphQLFloat },
+        category: { type: GraphQLString },
+        date: { type: GraphQLString }
+      },
+      resolve: expenseResolvers.mutations.updateExpense
+    },
+    deleteExpense: {
+      type: new GraphQLNonNull(GraphQLBoolean),
+      args: {
+        id: { type: new GraphQLNonNull(GraphQLID) }
+      },
+      resolve: expenseResolvers.mutations.deleteExpense
+    },
+    // Tag mutations
+    createTag: {
+      type: new GraphQLNonNull(TagType),
+      args: {
+        name: { type: new GraphQLNonNull(GraphQLString) },
+        icon: { type: GraphQLString }
+      },
+      resolve: expenseResolvers.mutations.createTag
+    },
+    updateTag: {
+      type: new GraphQLNonNull(TagType),
+      args: {
+        id: { type: new GraphQLNonNull(GraphQLID) },
+        name: { type: GraphQLString },
+        icon: { type: GraphQLString }
+      },
+      resolve: expenseResolvers.mutations.updateTag
+    },
+    deleteTag: {
+      type: new GraphQLNonNull(GraphQLBoolean),
+      args: {
+        id: { type: new GraphQLNonNull(GraphQLID) }
+      },
+      resolve: expenseResolvers.mutations.deleteTag
+    },
+    // Expense tag management mutations
+    addTagToExpense: {
+      type: new GraphQLNonNull(ExpenseType),
+      args: {
+        expenseId: { type: new GraphQLNonNull(GraphQLID) },
+        tagId: { type: new GraphQLNonNull(GraphQLID) }
+      },
+      resolve: expenseResolvers.mutations.addTagToExpense
+    },
+    removeTagFromExpense: {
+      type: new GraphQLNonNull(ExpenseType),
+      args: {
+        expenseId: { type: new GraphQLNonNull(GraphQLID) },
+        tagId: { type: new GraphQLNonNull(GraphQLID) }
+      },
+      resolve: expenseResolvers.mutations.removeTagFromExpense
+    }
   }
+});
 
-  type Expense {
-    id: ID!
-    title: String!
-    amount: Float!
-    category: String!
-    date: String!
-    userId: ID!
-    user: User!
-    createdAt: String!
-    updatedAt: String!
-  }
+const schema = new GraphQLSchema({
+  query: QueryType,
+  mutation: MutationType
+});
 
-  type LogoutResponse {
-    success: Boolean!
-  }
+const rootValue = {}; // No rootValue needed when resolvers are attached directly to fields
 
-  type Query {
-    users: [User!]!
-    user(id: ID!): User
-    me: User!
-    expenses(userId: ID): [Expense!]!
-    expense(id: ID!): Expense
-  }
-
-  type Mutation {
-    login(email: String!, password: String!): AuthResponse
-    register(name: String!, email: String!, password: String!): AuthResponse
-    logout: LogoutResponse!
-    updateProfile(name: String, email: String, password: String): User!
-    createUser(name: String!, email: String!, password: String!): User!
-    updateUser(id: ID!, name: String, email: String): User!
-    deleteUser(id: ID!): Boolean!
-
-    createExpense(title: String!, amount: Float!, category: String!, date: String!, userId: ID!): Expense!
-    updateExpense(id: ID!, title: String, amount: Float, category: String, date: String): Expense!
-    deleteExpense(id: ID!): Boolean!
-  }
-`;
-
-const schema = buildSchema(schemaString);
-
-const rootValue = {
-  // User queries and mutations
-  users: userResolvers.queries.users,
-  user: userResolvers.queries.user,
-  me: userResolvers.queries.me,
-  createUser: userResolvers.mutations.createUser,
-  updateUser: userResolvers.mutations.updateUser,
-  deleteUser: userResolvers.mutations.deleteUser,
-
-  // Expense queries and mutations
-  expenses: expenseResolvers.queries.expenses,
-  expense: expenseResolvers.queries.expense,
-  createExpense: expenseResolvers.mutations.createExpense,
-  updateExpense: expenseResolvers.mutations.updateExpense,
-  deleteExpense: expenseResolvers.mutations.deleteExpense,
-
-  // Auth mutations
-  login: userResolvers.mutations.login,
-  register: userResolvers.mutations.register,
-  logout: userResolvers.mutations.logout,
-  updateProfile: userResolvers.mutations.updateProfile,
-};
-
-export { schema, rootValue };
+export { schema };

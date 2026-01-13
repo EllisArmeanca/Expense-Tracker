@@ -3,5 +3,6 @@
     nativeBuildInputs = with pkgs; [ 
       nodejs_24
       qwen-code
+      dbeaver-bin
     ];
 }
