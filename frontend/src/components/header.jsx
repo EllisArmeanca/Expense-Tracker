@@ -32,8 +32,8 @@ const Header = () => {
         </h1>
         {isAuthenticated && (
           <div className="flex items-center space-x-4">
-            <Button 
-              variant="ghost" 
+            <Button
+              variant="ghost"
               onClick={() => navigate('/dashboard')}
               className="hidden md:flex items-center"
             >

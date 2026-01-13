@@ -210,7 +210,6 @@ export const login = async (email, password) => {
       name: user.name,          // User name
       isAdmin: user.isAdmin,    // Admin status
       iat: Math.floor(Date.now() / 1000), // Issued at time
-      exp: Math.floor(Date.now() / 1000) + (7 * 24 * 60 * 60), // Expiration time (7 days)
       iss: 'expense-tracker',   // Issuer
       aud: 'expense-tracker-users' // Audience
     };

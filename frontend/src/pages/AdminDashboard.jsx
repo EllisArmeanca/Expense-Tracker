@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -52,7 +52,7 @@ const AdminDashboard = () => {
 
   const toggleAdminStatus = async (userId, currentAdminStatus) => {
     try {
-      const mutation = currentAdminStatus 
+      const mutation = currentAdminStatus
         ? `
           mutation DemoteFromAdmin($id: ID!) {
             demoteFromAdmin(id: $id) {
@@ -93,16 +93,16 @@ const AdminDashboard = () => {
       }
 
       // Update the local state to reflect the change
-      const updatedUsers = users.map(u => 
-        u.id === userId 
-          ? { ...u, isAdmin: result.data[currentAdminStatus ? 'demoteFromAdmin' : 'promoteToAdmin'].isAdmin } 
+      const updatedUsers = users.map(u =>
+        u.id === userId
+          ? { ...u, isAdmin: result.data[currentAdminStatus ? 'demoteFromAdmin' : 'promoteToAdmin'].isAdmin }
           : u
       );
-      
+
       setUsers(updatedUsers);
-      
-      toast.success(currentAdminStatus 
-        ? 'User demoted from admin successfully!' 
+
+      toast.success(currentAdminStatus
+        ? 'User demoted from admin successfully!'
         : 'User promoted to admin successfully!');
     } catch (error) {
       toast.error(`Failed to update admin status: ${error.message}`);
@@ -160,9 +160,8 @@ const AdminDashboard = () => {
                     <td className="px-6 py-4 whitespace-nowrap">{user.name}</td>
                     <td className="px-6 py-4 whitespace-nowrap">{user.email}</td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                        user.isAdmin ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                      }`}>
+                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${user.isAdmin ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                        }`}>
                         {user.isAdmin ? 'Admin' : 'User'}
                       </span>
                     </td>
