@@ -17,6 +17,7 @@ import ExpensesPage from '@/pages/Expenses';
 import SettingsPage from '@/pages/Settings';
 import AddExpensePage from '@/pages/AddExpensePage';
 import CategoriesPage from '@/pages/CategoriesPage';
+import StatisticsPage from '@/pages/StatisticsPage';
 
 // Simple test component
 const TestComponent = () => {
@@ -158,6 +159,20 @@ function App() {
                     <RequireAuth>
                       <ResponsiveLayout>
                         <CategoriesPage />
+                      </ResponsiveLayout>
+                    </RequireAuth>
+                  } />
+                  <Route path="/statistics" element={
+                    <RequireAuth>
+                      <ResponsiveLayout>
+                        <StatisticsPage />
+                      </ResponsiveLayout>
+                    </RequireAuth>
+                  } />
+                  <Route path="/admin" element={
+                    <RequireAuth>
+                      <ResponsiveLayout>
+                        <AdminDashboard />
                       </ResponsiveLayout>
                     </RequireAuth>
                   } />

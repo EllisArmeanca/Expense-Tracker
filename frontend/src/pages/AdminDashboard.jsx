@@ -1,21 +1,40 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { toast } from 'sonner';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/contexts/AuthContext';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 
 const AdminDashboard = () => {
-  const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(true);
   const { user } = useAuth();
-
+  const [activeTab, setActiveTab] = useState('users');
+  const [users, setUsers] = useState([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [userForm, setUserForm] = useState({ name: '', email: '', password: '', isAdmin: false });
+  const [sqlQuery, setSqlQuery] = useState('');
+  const [graphqlQuery, setGraphqlQuery] = useState('');
+  const [commandResult, setCommandResult] = useState('');
+  const [commandLoading, setCommandLoading] = useState(false);
+  const [showDeleteAlert, setShowDeleteAlert] = useState(false);
+  const [selectedUserId, setSelectedUserId] = useState(null);
+  
+  // Check if user is admin
   useEffect(() => {
-    fetchUsers();
-  }, []);
+    if (user && !user.isAdmin) {
+      window.location.href = '/dashboard';
+    }
+  }, [user]);
 
+  // Fetch all users
   const fetchUsers = async () => {
+    setUsersLoading(true);
     try {
-      const response = await fetch(import.meta.env.VITE_API_URL || 'http://localhost:4000/graphql', {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/admin/gql`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -23,13 +42,14 @@ const AdminDashboard = () => {
         },
         body: JSON.stringify({
           query: `
-            query AdminUsers {
+            query GetAdminUsers {
               adminUsers {
                 id
                 name
                 email
                 isAdmin
                 createdAt
+                updatedAt
               }
             }
           `
@@ -37,99 +57,245 @@ const AdminDashboard = () => {
       });
 
       const result = await response.json();
-
-      if (result.errors) {
-        throw new Error(result.errors[0].message);
+      
+      if (!result.errors) {
+        setUsers(result.data.allUsers || []);
+      } else {
+        throw new Error(result.errors[0]?.message || 'Error fetching users');
       }
-
-      setUsers(result.data.adminUsers);
-    } catch (error) {
-      toast.error(`Failed to load users: ${error.message}`);
+    } catch (err) {
+      console.error('Error fetching users:', err);
     } finally {
-      setLoading(false);
+      setUsersLoading(false);
     }
   };
 
-  const toggleAdminStatus = async (userId, currentAdminStatus) => {
-    try {
-      const mutation = currentAdminStatus
-        ? `
-          mutation DemoteFromAdmin($id: ID!) {
-            demoteFromAdmin(id: $id) {
-              id
-              name
-              email
-              isAdmin
-            }
-          }
-        `
-        : `
-          mutation PromoteToAdmin($id: ID!) {
-            promoteToAdmin(id: $id) {
-              id
-              name
-              email
-              isAdmin
-            }
-          }
-        `;
+  // Handle tab change
+  useEffect(() => {
+    if (activeTab === 'users') {
+      fetchUsers();
+    }
+  }, [activeTab]);
 
-      const response = await fetch(import.meta.env.VITE_API_URL || 'http://localhost:4000/graphql', {
+  // Handle form changes
+  const handleUserFormChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    setUserForm(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value
+    }));
+  };
+
+  // Handle create user
+  const handleCreateUser = async (e) => {
+    e.preventDefault();
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/admin/gql`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('authToken')}`
         },
         body: JSON.stringify({
-          query: mutation,
-          variables: { id: userId }
+          query: `
+            mutation CreateUser($input: CreateUserInput!) {
+              createUser(input: $input) {
+                id
+                name
+                email
+                isAdmin
+                createdAt
+                updatedAt
+              }
+            }
+          `,
+          variables: { 
+            input: {
+              ...userForm,
+              password: userForm.password || undefined  // Don't send empty password
+            }
+          }
         })
       });
 
       const result = await response.json();
-
-      if (result.errors) {
-        throw new Error(result.errors[0].message);
+      
+      if (!result.errors) {
+        setUserForm({ name: '', email: '', password: '', isAdmin: false });
+        fetchUsers(); // Refresh the list
+      } else {
+        throw new Error(result.errors[0]?.message || 'Error creating user');
       }
-
-      // Update the local state to reflect the change
-      const updatedUsers = users.map(u =>
-        u.id === userId
-          ? { ...u, isAdmin: result.data[currentAdminStatus ? 'demoteFromAdmin' : 'promoteToAdmin'].isAdmin }
-          : u
-      );
-
-      setUsers(updatedUsers);
-
-      toast.success(currentAdminStatus
-        ? 'User demoted from admin successfully!'
-        : 'User promoted to admin successfully!');
-    } catch (error) {
-      toast.error(`Failed to update admin status: ${error.message}`);
+    } catch (err) {
+      console.error('Error creating user:', err);
     }
   };
 
-  if (!user?.isAdmin) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Card className="w-full max-w-md">
-          <CardHeader className="text-center">
-            <CardTitle>Access Denied</CardTitle>
-            <CardDescription>
-              You need admin privileges to access this page
-            </CardDescription>
-          </CardHeader>
-        </Card>
-      </div>
-    );
-  }
+  // Handle update user
+  const handleUpdateUser = async (userId, updates) => {
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/admin/gql`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+        },
+        body: JSON.stringify({
+          query: `
+            mutation UpdateUser($id: ID!, $input: UpdateUserInput!) {
+              updateUser(id: $id, input: $input) {
+                id
+                name
+                email
+                isAdmin
+                createdAt
+                updatedAt
+              }
+            }
+          `,
+          variables: { id: userId, input: updates }
+        })
+      });
 
-  if (loading) {
+      const result = await response.json();
+      
+      if (!result.errors) {
+        fetchUsers(); // Refresh the list
+      } else {
+        throw new Error(result.errors[0]?.message || 'Error updating user');
+      }
+    } catch (err) {
+      console.error('Error updating user:', err);
+    }
+  };
+
+  // Handle delete user confirmation
+  const confirmDeleteUser = (userId) => {
+    setSelectedUserId(userId);
+    setShowDeleteAlert(true);
+  };
+
+  // Handle delete user
+  const handleDeleteUser = async () => {
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/admin/gql`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+        },
+        body: JSON.stringify({
+          query: `
+            mutation DeleteUser($id: ID!) {
+              deleteUser(id: $id)
+            }
+          `,
+          variables: { id: selectedUserId }
+        })
+      });
+
+      const result = await response.json();
+      
+      if (!result.errors) {
+        fetchUsers(); // Refresh the list
+      } else {
+        throw new Error(result.errors[0]?.message || 'Error deleting user');
+      }
+    } catch (err) {
+      console.error('Error deleting user:', err);
+    } finally {
+      setShowDeleteAlert(false);
+      setSelectedUserId(null);
+    }
+  };
+
+  // Handle SQL query execution
+  const executeSqlQuery = async () => {
+    if (!sqlQuery.trim()) return;
+    
+    setCommandLoading(true);
+    setCommandResult('Executing...');
+    
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/admin/gql`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+        },
+        body: JSON.stringify({
+          query: `
+            mutation ExecuteSQL($query: String!) {
+              executeSQL(query: $query)
+            }
+          `,
+          variables: { query: sqlQuery }
+        })
+      });
+
+      const result = await response.json();
+      
+      if (!result.errors) {
+        setCommandResult(JSON.stringify(result.data.executeSQL, null, 2));
+      } else {
+        setCommandResult(`Error: ${result.errors[0]?.message}`);
+      }
+    } catch (err) {
+      setCommandResult(`Error: ${err.message}`);
+    } finally {
+      setCommandLoading(false);
+    }
+  };
+
+  // Handle GraphQL query execution
+  const executeGraphqlQuery = async () => {
+    if (!graphqlQuery.trim()) return;
+    
+    setCommandLoading(true);
+    setCommandResult('Executing...');
+    
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/admin/gql`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+        },
+        body: JSON.stringify({
+          query: graphqlQuery
+        })
+      });
+
+      const result = await response.json();
+      setCommandResult(JSON.stringify(result, null, 2));
+    } catch (err) {
+      setCommandResult(`Error: ${err.message}`);
+    } finally {
+      setCommandLoading(false);
+    }
+  };
+
+  // Toggle user admin status
+  const toggleAdminStatus = async (user) => {
+    await handleUpdateUser(user.id, { isAdmin: !user.isAdmin });
+  };
+
+  // Change user password
+  const changeUserPassword = async (userId, newPassword) => {
+    if (!newPassword) return;
+    
+    await handleUpdateUser(userId, { password: newPassword });
+  };
+
+  if (!user || !user.isAdmin) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="min-h-screen flex items-center justify-center">
         <Card>
-          <CardContent className="p-8">
-            <div className="text-center">Loading users...</div>
+          <CardHeader>
+            <CardTitle>Access Denied</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p>You must be an administrator to access this page.</p>
           </CardContent>
         </Card>
       </div>
@@ -137,56 +303,264 @@ const AdminDashboard = () => {
   }
 
   return (
-    <div className="container mx-auto py-8">
-      <Card>
-        <CardHeader>
-          <CardTitle>Admin Dashboard</CardTitle>
-          <CardDescription>Manage users and their admin privileges</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Admin Status</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {users.map((user) => (
-                  <tr key={user.id}>
-                    <td className="px-6 py-4 whitespace-nowrap">{user.name}</td>
-                    <td className="px-6 py-4 whitespace-nowrap">{user.email}</td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${user.isAdmin ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                        }`}>
-                        {user.isAdmin ? 'Admin' : 'User'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <Button
-                        variant={user.isAdmin ? "destructive" : "default"}
-                        size="sm"
-                        onClick={() => toggleAdminStatus(user.id, user.isAdmin)}
-                        disabled={user.email === localStorage.getItem('currentUserEmail')} // Prevent self demotion
-                      >
-                        {user.isAdmin ? 'Remove Admin' : 'Make Admin'}
+    <div className="min-h-screen bg-background">
+      <div className="container mx-auto py-10">
+        <Card className="max-w-6xl mx-auto">
+          <CardHeader>
+            <CardTitle>Admin Dashboard</CardTitle>
+            <CardDescription>Manage users and execute administrative commands</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Tabs value={activeTab} onValueChange={setActiveTab}>
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="users">User Management</TabsTrigger>
+                <TabsTrigger value="sql">SQL Query</TabsTrigger>
+                <TabsTrigger value="graphql">GraphQL Query</TabsTrigger>
+              </TabsList>
+
+              {/* User Management Tab */}
+              <TabsContent value="users">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  {/* User Creation Form */}
+                  <div className="lg:col-span-1">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Create User</CardTitle>
+                        <CardDescription>Add a new user to the system</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <form onSubmit={handleCreateUser} className="space-y-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="name">Name</Label>
+                            <Input
+                              id="name"
+                              name="name"
+                              value={userForm.name}
+                              onChange={handleUserFormChange}
+                              required
+                            />
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label htmlFor="email">Email</Label>
+                            <Input
+                              id="email"
+                              name="email"
+                              type="email"
+                              value={userForm.email}
+                              onChange={handleUserFormChange}
+                              required
+                            />
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label htmlFor="password">Password</Label>
+                            <Input
+                              id="password"
+                              name="password"
+                              type="password"
+                              value={userForm.password}
+                              onChange={handleUserFormChange}
+                            />
+                            <p className="text-xs text-muted-foreground">Leave blank to auto-generate</p>
+                          </div>
+
+                          <div className="flex items-center space-x-2">
+                            <input
+                              id="isAdmin"
+                              name="isAdmin"
+                              type="checkbox"
+                              checked={userForm.isAdmin}
+                              onChange={handleUserFormChange}
+                              className="h-4 w-4"
+                            />
+                            <Label htmlFor="isAdmin">Admin User</Label>
+                          </div>
+
+                          <Button type="submit" className="w-full">
+                            Create User
+                          </Button>
+                        </form>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  {/* User List */}
+                  <div className="lg:col-span-2">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Users</CardTitle>
+                        <CardDescription>Manage existing users in the system</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        {usersLoading ? (
+                          <div className="flex justify-center items-center h-32">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                          </div>
+                        ) : (
+                          <div className="overflow-auto max-h-[500px]">
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead>Name</TableHead>
+                                  <TableHead>Email</TableHead>
+                                  <TableHead>Status</TableHead>
+                                  <TableHead>Created</TableHead>
+                                  <TableHead>Actions</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {users.map(user => (
+                                  <TableRow key={user.id}>
+                                    <TableCell className="font-medium">{user.name}</TableCell>
+                                    <TableCell>{user.email}</TableCell>
+                                    <TableCell>
+                                      <Badge variant={user.isAdmin ? "secondary" : "outline"}>
+                                        {user.isAdmin ? "Admin" : "User"}
+                                      </Badge>
+                                    </TableCell>
+                                    <TableCell>{new Date(user.createdAt).toLocaleDateString()}</TableCell>
+                                    <TableCell>
+                                      <div className="flex space-x-2">
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() => toggleAdminStatus(user)}
+                                        >
+                                          {user.isAdmin ? 'Remove Admin' : 'Make Admin'}
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() => {
+                                            const newPassword = prompt('Enter new password:');
+                                            if (newPassword) changeUserPassword(user.id, newPassword);
+                                          }}
+                                        >
+                                          Change Password
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="destructive"
+                                          onClick={() => confirmDeleteUser(user.id)}
+                                        >
+                                          Delete
+                                        </Button>
+                                      </div>
+                                    </TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+
+                            {users.length === 0 && (
+                              <div className="text-center py-10 text-muted-foreground">
+                                No users found
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </div>
+                </div>
+              </TabsContent>
+
+              {/* SQL Query Tab */}
+              <TabsContent value="sql">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Execute SQL Query</CardTitle>
+                    <CardDescription>Run direct SQL queries against the database</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="sql-query">SQL Query</Label>
+                        <Textarea
+                          id="sql-query"
+                          value={sqlQuery}
+                          onChange={(e) => setSqlQuery(e.target.value)}
+                          placeholder="SELECT * FROM users;"
+                          rows={6}
+                        />
+                      </div>
+                      
+                      <Button onClick={executeSqlQuery} disabled={commandLoading} className="w-full">
+                        {commandLoading ? 'Executing...' : 'Execute Query'}
                       </Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {users.length === 0 && (
-            <div className="text-center py-8">
-              <p>No users found.</p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                      
+                      {commandResult && (
+                        <div>
+                          <Label>Result</Label>
+                          <div className="mt-2 p-4 bg-gray-900 text-green-400 rounded-md font-mono text-sm overflow-auto max-h-60">
+                            <pre>{commandResult}</pre>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              {/* GraphQL Query Tab */}
+              <TabsContent value="graphql">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Execute GraphQL Query</CardTitle>
+                    <CardDescription>Run GraphQL queries against the API</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="graphql-query">GraphQL Query/Mutation</Label>
+                        <Textarea
+                          id="graphql-query"
+                          value={graphqlQuery}
+                          onChange={(e) => setGraphqlQuery(e.target.value)}
+                          placeholder={`query { users { id name email } }`}
+                          rows={8}
+                        />
+                      </div>
+                      
+                      <Button onClick={executeGraphqlQuery} disabled={commandLoading} className="w-full">
+                        {commandLoading ? 'Executing...' : 'Execute Query'}
+                      </Button>
+                      
+                      {commandResult && (
+                        <div>
+                          <Label>Result</Label>
+                          <div className="mt-2 p-4 bg-gray-900 text-green-400 rounded-md font-mono text-sm overflow-auto max-h-60">
+                            <pre>{commandResult}</pre>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            </Tabs>
+          </CardContent>
+        </Card>
+        
+        {/* Delete Confirmation Dialog */}
+        <AlertDialog open={showDeleteAlert} onOpenChange={setShowDeleteAlert}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This action cannot be undone. This will permanently delete the user account and all associated data.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleDeleteUser} className="bg-destructive hover:bg-destructive/90">
+                Delete User
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
     </div>
   );
 };
