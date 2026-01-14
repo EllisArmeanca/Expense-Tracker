@@ -111,28 +111,49 @@ app.use('/graphql', createHandler({
 
 // Admin GraphQL endpoint with admin authentication
 app.use('/admin/gql', async (req, res, next) => {
+  logger.info('Admin endpoint authentication attempt', { ip: req.ip });
   try {
     const user = await authenticateAdmin(req);
-    req.adminUser = user; // Store admin user in request object
-    next();
+    logger.info('Admin authentication successful', { userId: user?.id, userEmail: user?.email });
+
+    // Create a custom GraphQL handler that has access to the authenticated admin user
+    const adminGraphQLHandler = createHandler({
+      schema,
+      context: async () => {
+        // Context for admin endpoint with the authenticated user
+        logger.info('Admin context created', {
+          adminUserExists: !!user,
+          adminUserId: user?.id,
+          adminUserIsAdmin: user?.isAdmin
+        });
+
+        const context = {
+          req,
+          user: user ? { ...user, isAdmin: true } : null, // Ensure isAdmin flag is set
+          isAdmin: true // Indicate this is an admin context
+        };
+
+        logger.info('Admin context details', {
+          userPresent: !!context.user,
+          userId: context.user?.id,
+          userIsAdmin: context.user?.isAdmin,
+          isAdminFlag: context.isAdmin
+        });
+
+        return context;
+      }
+    });
+
+    // Execute the admin GraphQL handler
+    await adminGraphQLHandler(req, res);
   } catch (error) {
+    logger.error('Admin authentication failed', { error: error.message, ip: req.ip });
     res.status(401).json({
       error: 'Unauthorized',
       message: error.message
     });
-    return;
   }
-}, createHandler({
-  schema, // Use the same schema for simplicity
-  context: async (req) => {
-    // Context for admin endpoint
-    return {
-      req,
-      user: req.adminUser, // Pass the authenticated admin user
-      isAdmin: true // Indicate this is an admin context
-    };
-  }
-}));
+});
 
 // Health check endpoint
 app.get('/health', (req, res) => {

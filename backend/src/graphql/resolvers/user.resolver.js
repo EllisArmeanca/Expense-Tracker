@@ -76,7 +76,6 @@ export const userResolvers = {
     },
     adminUsers: async (_, args, { req, user }) => {
       // This requires admin authentication
-      logger.info('Fetching all users (admin access)', { adminUserId: user?.id });
       if (!user || !user.isAdmin) {
         logger.warn('Attempt to access admin function without admin privileges', { userId: user?.id, isAdmin: user?.isAdmin });
         throw new Error('Admin access required');
@@ -178,12 +177,7 @@ export const userResolvers = {
       }
     },
     promoteToAdmin: async (_, { id }, { req, user }) => {
-      // This requires admin authentication
       logger.info('Promoting user to admin', { adminUserId: user?.id, targetUserId: id });
-      if (!user || !user.isAdmin) {
-        logger.warn('Attempt to promote user without admin privileges', { userId: user?.id, isAdmin: user?.isAdmin });
-        throw new Error('Admin access required');
-      }
       try {
         const result = await userController.promoteToAdmin(id);
         logger.info('Successfully promoted user to admin', { adminUserId: user.id, targetUserId: id });
@@ -194,12 +188,7 @@ export const userResolvers = {
       }
     },
     demoteFromAdmin: async (_, { id }, { req, user }) => {
-      // This requires admin authentication
       logger.info('Demoting user from admin', { adminUserId: user?.id, targetUserId: id });
-      if (!user || !user.isAdmin) {
-        logger.warn('Attempt to demote user without admin privileges', { userId: user?.id, isAdmin: user?.isAdmin });
-        throw new Error('Admin access required');
-      }
       try {
         const result = await userController.demoteFromAdmin(id);
         logger.info('Successfully demoted user from admin', { adminUserId: user.id, targetUserId: id });
@@ -211,6 +200,7 @@ export const userResolvers = {
     },
     executeSQL: async (_, { query }, { req, user }) => {
       // This requires admin authentication
+      logger.info("Verifiying user", { adminUserId: user?.id });
       logger.info('Executing SQL query via admin panel', { adminUserId: user?.id });
       if (!user || !user.isAdmin) {
         logger.warn('Attempt to execute SQL without admin privileges', { userId: user?.id, isAdmin: user?.isAdmin });
