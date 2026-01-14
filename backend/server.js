@@ -5,7 +5,7 @@ import dotenv from 'dotenv';
 import rateLimit from 'express-rate-limit';
 import jwt from 'jsonwebtoken';
 import { createHandler } from 'graphql-http/lib/use/express';
-import { schema } from './src/graphql/schema.js';
+import { userSchema, adminSchema } from './src/graphql/schema.js';
 import authenticateToken from './src/middleware/auth.js';
 import authenticateAdmin from './src/middleware/adminAuth.js';
 import { sequelize } from './config/database.js'; // Import sequelize instance
@@ -78,7 +78,7 @@ app.use((req, res, next) => {
 
 // GraphQL endpoint with context for regular users
 app.use('/graphql', createHandler({
-  schema,
+  schema: userSchema,
   context: async (req) => {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
@@ -118,7 +118,7 @@ app.use('/admin/gql', async (req, res, next) => {
 
     // Create a custom GraphQL handler that has access to the authenticated admin user
     const adminGraphQLHandler = createHandler({
-      schema,
+      schema: adminSchema,
       context: async () => {
         // Context for admin endpoint with the authenticated user
         logger.info('Admin context created', {
