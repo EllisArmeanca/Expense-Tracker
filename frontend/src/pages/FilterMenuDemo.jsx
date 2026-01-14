@@ -48,7 +48,7 @@ const FilterMenuDemo = () => {
         </div>
         <div className="text-sm text-muted-foreground">
           <p>• Opens as a drawer from the bottom</p>
-          <p>• Contains multiple filter types (category, amount, date, tags)</p>
+          <p>• Contains multiple filter types (amount, date, tags)</p>
           <p>• Includes dynamically loaded user-created tags</p>
           <p>• Includes apply and reset functionality</p>
           <p>• Supports custom filter components via children</p>

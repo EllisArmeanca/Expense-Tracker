@@ -17,11 +17,9 @@ const FilterMenu = ({
   onApplyFilters = () => {},
   children,
   getTags = null,  // Function to fetch tags from the API
-  staticCategories = ['Food', 'Transport', 'Entertainment', 'Shopping', 'Health', 'Utilities', 'Housing', 'Education', 'Other']
 }) => {
   const [dateRange, setDateRange] = useState({ from: undefined, to: undefined });
   const [filters, setFilters] = useState({
-    category: '',
     minAmount: '',
     maxAmount: '',
     includeTags: [],
@@ -102,20 +100,6 @@ const FilterMenu = ({
             <DrawerDescription>{description}</DrawerDescription>
           </DrawerHeader>
           <div className="p-4 pb-0 space-y-6">
-            {/* Category Filter */}
-            <div className="space-y-3">
-              <Label>Category</Label>
-              <Select value={filters.category} onValueChange={(value) => setFilters({...filters, category: value})}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select category" />
-                </SelectTrigger>
-                <SelectContent>
-                  {staticCategories.map((cat) => (
-                    <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
 
             {/* Amount Range */}
             <div className="space-y-3">

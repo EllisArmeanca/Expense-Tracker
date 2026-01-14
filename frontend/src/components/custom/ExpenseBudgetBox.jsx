@@ -9,7 +9,7 @@ const ExpenseBudgetBox = ({
   isIncome = false,
   currency = "USD",
   date,
-  category
+  tags = [] // Changed from category to tags
 }) => {
   // Determine if the transaction should display as positive or negative
   // If isIncome is true, it's always positive (green)
@@ -60,10 +60,17 @@ const ExpenseBudgetBox = ({
         )}>
           {isPositive ? '+' : '-'}${formattedAmount}
         </div>
-        {category && (
-          <p className="text-xs text-muted-foreground mt-1">
-            {category}
-          </p>
+        {tags && tags.length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-1">
+            {tags.map((tag, index) => (
+              <span
+                key={index}
+                className="text-xs px-2 py-0.5 bg-secondary text-secondary-foreground rounded-full"
+              >
+                {tag.name || tag}
+              </span>
+            ))}
+          </div>
         )}
       </CardContent>
     </Card>

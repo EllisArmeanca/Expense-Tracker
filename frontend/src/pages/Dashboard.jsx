@@ -4,21 +4,36 @@ import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { 
-  Home, 
-  Settings, 
-  TrendingUp, 
-  TrendingDown, 
-  Activity, 
+import {
+  Home,
+  Settings,
+  TrendingUp,
+  TrendingDown,
+  Activity,
   BarChart,
-  Wallet, 
+  Wallet,
   Tag,
   User,
-  DollarSign
+  DollarSign,
+  Plus
 } from 'lucide-react';
 import ExpenditureIncomeChart from '@/components/custom/ExpenditureIncomeChart';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { 
+  Drawer,
+  DrawerClose,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerTrigger
+} from '@/components/ui/drawer';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const Dashboard = () => {
   const { user } = useAuth();
@@ -29,6 +44,19 @@ const Dashboard = () => {
   const [budgetWarning, setBudgetWarning] = useState({ status: 'safe', amount: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  
+  // State for the expense/income form
+  const [formData, setFormData] = useState({
+    amount: '',
+    description: '',
+    tags: [], // Array of selected tags (replacing category)
+    type: 'expense', // 'expense' or 'income'
+    date: new Date().toISOString().split('T')[0]
+  });
+  
+  // State for available tags
+  const [availableTags, setAvailableTags] = useState([]);
+  const [loadingTags, setLoadingTags] = useState(false);
 
   // Calculate user initials for avatar
   const getUserInitials = (name) => {
@@ -38,11 +66,135 @@ const Dashboard = () => {
     return initials.slice(0, 2);
   };
 
+  // Function to fetch available tags
+  const fetchTags = async () => {
+    try {
+      setLoadingTags(true);
+      
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/graphql`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+        },
+        body: JSON.stringify({
+          query: `
+            query GetTags {
+              tags {
+                id
+                name
+              }
+            }
+          `
+        })
+      });
+
+      const result = await response.json();
+      
+      if (result.errors) {
+        throw new Error(result.errors[0]?.message || 'Error fetching tags');
+      }
+
+      setAvailableTags(result.data.tags || []);
+    } catch (err) {
+      console.error('Error fetching tags:', err);
+      // Default to some sample tags if API fails
+      setAvailableTags([
+        { id: '1', name: 'Food', color: '#ef4444' },
+        { id: '2', name: 'Transport', color: '#3b82f6' },
+        { id: '3', name: 'Entertainment', color: '#10b981' },
+        { id: '4', name: 'Shopping', color: '#8b5cf6' },
+        { id: '5', name: 'Utilities', color: '#f59e0b' }
+      ]);
+    } finally {
+      setLoadingTags(false);
+    }
+  };
+
+  // Function to toggle a tag selection
+  const toggleTagSelection = (tagId) => {
+    setFormData(prev => {
+      if (prev.tags.includes(tagId)) {
+        return {
+          ...prev,
+          tags: prev.tags.filter(id => id !== tagId)
+        };
+      } else {
+        return {
+          ...prev,
+          tags: [...prev.tags, tagId]
+        };
+      }
+    });
+  };
+
+  // Function to handle expense/income creation
+  const createTransaction = async () => {
+    try {
+      // Adjust amount based on type
+      const finalAmount = formData.type === 'expense' ? parseFloat(formData.amount) * -1 : parseFloat(formData.amount);
+      
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/graphql`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+        },
+        body: JSON.stringify({
+          query: `
+            mutation CreateExpense($amount: Float!, $date: String, $tagIds: [ID!]) {
+              createExpense(amount: $amount, date: $date, tagIds: $tagIds) {
+                id
+                amount
+                date
+                tags {
+                  id
+                  name
+                  icon
+                }
+              }
+            }
+          `,
+          variables: {
+            amount: finalAmount,
+            date: formData.date,
+            tagIds: formData.tags
+          }
+        })
+      });
+
+      const result = await response.json();
+      
+      if (result.errors) {
+        throw new Error(result.errors[0].message);
+      }
+
+      // Reset form and refetch data
+      setFormData({
+        amount: '',
+        description: '',
+        // category removed since we now use tags
+        tags: [],
+        type: 'expense',
+        date: new Date().toISOString().split('T')[0]
+      });
+
+      // Refetch dashboard data to reflect the new transaction
+      fetchFinancialData();
+      
+      return true;
+    } catch (err) {
+      setError(err.message);
+      console.error('Error creating transaction:', err);
+      return false;
+    }
+  };
+
   // Fetch financial data from existing backend APIs
   const fetchFinancialData = async () => {
     try {
       setLoading(true);
-
+      
       // Get all financial transactions (using the actual backend schema)
       const transactionsResponse = await fetch(`${import.meta.env.VITE_API_URL}/graphql`, {
         method: 'POST',
@@ -57,8 +209,12 @@ const Dashboard = () => {
                 id
                 amount
                 date
-                category
                 createdAt
+                tags {
+                  id
+                  name
+                  icon
+                }
               }
             }
           `
@@ -159,7 +315,6 @@ const Dashboard = () => {
       // Determine if it's income or expense
       if (transaction.amount > 0) {
         // For this example, assuming positive amounts are incomes
-        // You may need to adjust based on how your backend structures the data
         grouped[monthKey].income += Math.abs(transaction.amount);
       } else {
         // Negative amounts or categorized as expenses
@@ -206,7 +361,7 @@ const Dashboard = () => {
     }
 
     const percentageChange = ((currentMonthExpTotal - lastMonthExpTotal) / lastMonthExpTotal) * 100;
-
+    
     return {
       status: percentageChange > 5 ? 'negative' : percentageChange < -5 ? 'positive' : 'on-track',
       percentage: Math.round(percentageChange)
@@ -217,15 +372,15 @@ const Dashboard = () => {
   const calculateBudgetWarning = (totalIncome, totalExpenses) => {
     // Simple logic: if expenses are more than 90% of income, show warning
     const ratio = totalExpenses / totalIncome;
-
+    
     if (isNaN(ratio) || totalIncome === 0) {
       return { status: 'safe', amount: 0 };
     }
 
     if (ratio > 0.9) {
-      return {
-        status: 'warning',
-        amount: Math.max(0, totalExpenses - (totalIncome * 0.9))
+      return { 
+        status: 'warning', 
+        amount: Math.max(0, totalExpenses - (totalIncome * 0.9)) 
       };
     }
 
@@ -236,15 +391,16 @@ const Dashboard = () => {
   const calculateGoalProgress = (income, expenses) => {
     // Example: goal is to save 20% of income
     if (income <= 0) return 0;
-
+    
     const targetSaving = income * 0.2;
     const actualSaving = income - expenses;
-
+    
     return Math.min(100, Math.round((actualSaving / targetSaving) * 100));
   };
 
   useEffect(() => {
     fetchFinancialData();
+    fetchTags(); // Fetch tags when component loads
   }, []);
 
   // Desktop sidebar navigation
@@ -256,6 +412,112 @@ const Dashboard = () => {
       </Avatar>
       
       <Separator orientation="horizontal" className="w-8" />
+      
+      <Drawer>
+        <DrawerTrigger asChild>
+          <Button
+            variant="secondary"
+            size="icon"
+            className="h-12 w-12 rounded-full"
+            aria-label="Add Transaction"
+          >
+            <Plus className="h-5 w-5" />
+          </Button>
+        </DrawerTrigger>
+        <DrawerContent className="max-w-md mx-auto px-4">
+          <div className="mx-auto w-full max-w-sm">
+            <DrawerHeader>
+              <DrawerTitle>Add Transaction</DrawerTitle>
+              <DrawerDescription>Create a new expense or income</DrawerDescription>
+            </DrawerHeader>
+            <div className="p-4">
+              <div className="grid gap-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="type">Type</Label>
+                    <Select value={formData.type} onValueChange={(value) => setFormData({...formData, type: value})}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="expense">Expense</SelectItem>
+                        <SelectItem value="income">Income</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="amount">Amount</Label>
+                    <Input 
+                      id="amount" 
+                      type="number" 
+                      placeholder="0.00"
+                      value={formData.amount}
+                      onChange={(e) => setFormData({...formData, amount: e.target.value})}
+                    />
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="description">Description</Label>
+                  <Input 
+                    id="description" 
+                    placeholder="Brief description"
+                    value={formData.description}
+                    onChange={(e) => setFormData({...formData, description: e.target.value})}
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label>Tags</Label>
+                  <div className="flex flex-wrap gap-2 min-h-12 p-2 border border-input rounded-md">
+                    {loadingTags ? (
+                      <div className="text-sm text-muted-foreground">Loading tags...</div>
+                    ) : availableTags.length > 0 ? (
+                      availableTags.map(tag => (
+                        <button
+                          key={tag.id}
+                          type="button"
+                          className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                            formData.tags.includes(tag.id)
+                              ? 'bg-primary text-primary-foreground'
+                              : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                          }`}
+                          style={{}}
+                          onClick={(e) => {
+                            e.stopPropagation(); // Prevent closing drawer
+                            toggleTagSelection(tag.id);
+                          }}
+                        >
+                          {tag.name}
+                        </button>
+                      ))
+                    ) : (
+                      <div className="text-sm text-muted-foreground">No tags available</div>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">Select one or more tags to categorize this expense</p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="date">Date</Label>
+                  <Input 
+                    id="date" 
+                    type="date" 
+                    value={formData.date}
+                    onChange={(e) => setFormData({...formData, date: e.target.value})}
+                  />
+                </div>
+              </div>
+            </div>
+            <DrawerFooter>
+              <Button onClick={createTransaction}>Create Transaction</Button>
+              <DrawerClose asChild>
+                <Button variant="outline">Cancel</Button>
+              </DrawerClose>
+            </DrawerFooter>
+          </div>
+        </DrawerContent>
+      </Drawer>
       
       <Button
         variant="secondary"
@@ -306,7 +568,7 @@ const Dashboard = () => {
   // Mobile bottom navigation
   const MobileNav = () => (
     <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 py-2 px-4 z-50 md:hidden">
-      <div className="flex justify-around items-center max-w-md mx-auto">
+      <div className="flex justify-around items-center max-w-md mx-auto relative">
         <Button
           variant="ghost"
           size="sm"
@@ -370,6 +632,113 @@ const Dashboard = () => {
           <span className="text-xs mt-1">Categories</span>
         </Button>
       </div>
+      
+      {/* Floating Add button */}
+      <Drawer>
+        <DrawerTrigger asChild>
+          <Button
+            variant="secondary"
+            size="icon"
+            className="absolute bottom-16 left-1/2 transform -translate-x-1/2 w-14 h-14 rounded-full shadow-lg"
+            aria-label="Add Transaction"
+          >
+            <Plus className="h-6 w-6" />
+          </Button>
+        </DrawerTrigger>
+        <DrawerContent className="max-w-md mx-auto px-4">
+          <div className="mx-auto w-full max-w-sm">
+            <DrawerHeader>
+              <DrawerTitle>Add Transaction</DrawerTitle>
+              <DrawerDescription>Create a new expense or income</DrawerDescription>
+            </DrawerHeader>
+            <div className="p-4">
+              <div className="grid gap-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="type">Type</Label>
+                    <Select value={formData.type} onValueChange={(value) => setFormData({...formData, type: value})}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="expense">Expense</SelectItem>
+                        <SelectItem value="income">Income</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="amount">Amount</Label>
+                    <Input 
+                      id="amount" 
+                      type="number" 
+                      placeholder="0.00"
+                      value={formData.amount}
+                      onChange={(e) => setFormData({...formData, amount: e.target.value})}
+                    />
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="description">Description</Label>
+                  <Input 
+                    id="description" 
+                    placeholder="Brief description"
+                    value={formData.description}
+                    onChange={(e) => setFormData({...formData, description: e.target.value})}
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label>Tags</Label>
+                  <div className="flex flex-wrap gap-2 min-h-12 p-2 border border-input rounded-md">
+                    {loadingTags ? (
+                      <div className="text-sm text-muted-foreground">Loading tags...</div>
+                    ) : availableTags.length > 0 ? (
+                      availableTags.map(tag => (
+                        <button
+                          key={tag.id}
+                          type="button"
+                          className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                            formData.tags.includes(tag.id)
+                              ? 'bg-primary text-primary-foreground'
+                              : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                          }`}
+                          style={{}}
+                          onClick={(e) => {
+                            e.stopPropagation(); // Prevent closing drawer
+                            toggleTagSelection(tag.id);
+                          }}
+                        >
+                          {tag.name}
+                        </button>
+                      ))
+                    ) : (
+                      <div className="text-sm text-muted-foreground">No tags available</div>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">Select one or more tags to categorize this expense</p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="date">Date</Label>
+                  <Input 
+                    id="date" 
+                    type="date" 
+                    value={formData.date}
+                    onChange={(e) => setFormData({...formData, date: e.target.value})}
+                  />
+                </div>
+              </div>
+            </div>
+            <DrawerFooter>
+              <Button onClick={createTransaction}>Create Transaction</Button>
+              <DrawerClose asChild>
+                <Button variant="outline">Cancel</Button>
+              </DrawerClose>
+            </DrawerFooter>
+          </div>
+        </DrawerContent>
+      </Drawer>
     </div>
   );
 

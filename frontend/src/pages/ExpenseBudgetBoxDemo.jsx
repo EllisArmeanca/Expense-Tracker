@@ -14,33 +14,33 @@ const ExpenseBudgetBoxDemo = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-3">
             <h4 className="text-sm font-medium">Examples:</h4>
-            <ExpenseBudgetBox 
-              label="Salary Deposit" 
-              amount={2500} 
-              isIncome={true} 
+            <ExpenseBudgetBox
+              label="Salary Deposit"
+              amount={2500}
+              isIncome={true}
               date="2023-05-15"
-              category="Income"
+              tags={[{name: 'Income'}]}
             />
-            <ExpenseBudgetBox 
-              label="Grocery Shopping" 
-              amount={85.30} 
-              isIncome={false} 
+            <ExpenseBudgetBox
+              label="Grocery Shopping"
+              amount={85.30}
+              isIncome={false}
               date="2023-05-16"
-              category="Food"
+              tags={[{name: 'Food'}, {name: 'Essential'}]}
             />
             <ExpenseBudgetBox
               label="Freelance Payment"
               amount={500}
               isIncome={true}
               date="2023-05-17"
-              category="Work"
+              tags={[{name: 'Work'}, {name: 'Income'}]}
             />
             <ExpenseBudgetBox
               label="Electricity Bill"
               amount={120.50}
               isIncome={false}
               date="2023-05-18"
-              category="Utilities"
+              tags={[{name: 'Utilities'}, {name: 'Bills'}]}
             />
           </div>
           <div className="space-y-3">

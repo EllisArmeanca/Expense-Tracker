@@ -5,11 +5,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
-const ExpenseForm = ({ isOpen, onClose, onSubmit }) => {
+const ExpenseForm = ({ isOpen, onClose, onSubmit, availableTags = [] }) => {
   const [formData, setFormData] = useState({
     title: '',
     amount: '',
-    category: 'Food',
+    tagIds: [], // Changed from category to tagIds
     date: new Date().toISOString().split('T')[0],
     description: ''
   });
@@ -17,17 +17,17 @@ const ExpenseForm = ({ isOpen, onClose, onSubmit }) => {
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!formData.title || !formData.amount) return;
-    
+
     onSubmit({
       ...formData,
       amount: parseFloat(formData.amount)
     });
-    
+
     // Reset form
     setFormData({
       title: '',
       amount: '',
-      category: 'Food',
+      tagIds: [], // Reset tags array
       date: new Date().toISOString().split('T')[0],
       description: ''
     });
@@ -67,24 +67,36 @@ const ExpenseForm = ({ isOpen, onClose, onSubmit }) => {
           </div>
           
           <div className="space-y-2">
-            <Label htmlFor="category">Category</Label>
-            <Select 
-              value={formData.category} 
-              onValueChange={(value) => setFormData({...formData, category: value})}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Food">Food</SelectItem>
-                <SelectItem value="Transport">Transport</SelectItem>
-                <SelectItem value="Entertainment">Entertainment</SelectItem>
-                <SelectItem value="Shopping">Shopping</SelectItem>
-                <SelectItem value="Health">Health</SelectItem>
-                <SelectItem value="Utilities">Utilities</SelectItem>
-                <SelectItem value="Other">Other</SelectItem>
-              </SelectContent>
-            </Select>
+            <Label htmlFor="tags">Tags</Label>
+            {/* Simple tag selection - user can select one or more tags */}
+            <div className="flex flex-wrap gap-2 p-2 border rounded-md min-h-[40px]">
+              {availableTags.length > 0 ? (
+                availableTags.map(tag => (
+                  <button
+                    key={tag.id}
+                    type="button"
+                    className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
+                      formData.tagIds.includes(tag.id)
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                    }`}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setFormData(prev => ({
+                        ...prev,
+                        tagIds: prev.tagIds.includes(tag.id)
+                          ? prev.tagIds.filter(id => id !== tag.id) // Remove tag
+                          : [...prev.tagIds, tag.id] // Add tag
+                      }));
+                    }}
+                  >
+                    {tag.name}
+                  </button>
+                ))
+              ) : (
+                <p className="text-sm text-muted-foreground italic">No tags available. Add some first!</p>
+              )}
+            </div>
           </div>
           
           <div className="space-y-2">
