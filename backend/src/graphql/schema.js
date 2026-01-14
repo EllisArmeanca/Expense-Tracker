@@ -58,7 +58,6 @@ const ExpenseType = new GraphQLObjectType({
     id: { type: new GraphQLNonNull(GraphQLID) },
     title: { type: new GraphQLNonNull(GraphQLString) },
     amount: { type: new GraphQLNonNull(GraphQLFloat) },
-    category: { type: new GraphQLNonNull(GraphQLString) },
     date: { type: new GraphQLNonNull(GraphQLString) },
     userId: { type: new GraphQLNonNull(GraphQLID) },
     user: { type: new GraphQLNonNull(UserType) },
@@ -208,9 +207,9 @@ const MutationType = new GraphQLObjectType({
       args: {
         title: { type: new GraphQLNonNull(GraphQLString) },
         amount: { type: new GraphQLNonNull(GraphQLFloat) },
-        category: { type: new GraphQLNonNull(GraphQLString) },
         date: { type: new GraphQLNonNull(GraphQLString) },
-        userId: { type: new GraphQLNonNull(GraphQLID) }
+        userId: { type: new GraphQLNonNull(GraphQLID) },
+        tagIds: { type: new GraphQLList(GraphQLID) } // Array of tag IDs to associate with the expense
       },
       resolve: expenseResolvers.mutations.createExpense
     },
@@ -220,8 +219,8 @@ const MutationType = new GraphQLObjectType({
         id: { type: new GraphQLNonNull(GraphQLID) },
         title: { type: GraphQLString },
         amount: { type: GraphQLFloat },
-        category: { type: GraphQLString },
-        date: { type: GraphQLString }
+        date: { type: GraphQLString },
+        tagIds: { type: new GraphQLList(GraphQLID) } // Array of tag IDs to associate with the expense
       },
       resolve: expenseResolvers.mutations.updateExpense
     },

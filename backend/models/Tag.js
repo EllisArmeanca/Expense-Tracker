@@ -15,7 +15,6 @@ const Tag = sequelize.define('Tag', {
   name: {
     type: DataTypes.STRING,
     allowNull: false,
-    unique: true,
     validate: {
       len: [1, 100] // Limit tag name length
     }
@@ -24,6 +23,15 @@ const Tag = sequelize.define('Tag', {
     type: DataTypes.STRING,
     allowNull: true,  // Allow null for backward compatibility
     comment: 'Icon identifier for the tag (emoji, icon name, or icon class)'
+  },
+  userId: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    references: {
+      model: 'users',
+      key: 'id'
+    },
+    onDelete: 'CASCADE'
   },
   createdAt: {
     type: DataTypes.DATE,
@@ -43,6 +51,12 @@ const Tag = sequelize.define('Tag', {
 
 // Define associations
 Tag.associate = function (models) {
+  // One-to-many relationship with user
+  Tag.belongsTo(models.User, {
+    foreignKey: 'userId',
+    as: 'user'
+  });
+
   // Many-to-many relationship with expenses through expense_tags junction table
   Tag.belongsToMany(models.Expense, {
     through: 'expense_tags',

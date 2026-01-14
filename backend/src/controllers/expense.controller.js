@@ -48,7 +48,7 @@ export const getExpenseById = async (id, userId) => {
 };
 
 // Create a new expense
-export const createExpense = async ({ title, amount, category, date, userId }) => {
+export const createExpense = async ({ title, amount, date, userId, tagIds }) => {
   try {
     // Validate that user exists
     const user = await User.findByPk(userId);
@@ -62,13 +62,42 @@ export const createExpense = async ({ title, amount, category, date, userId }) =
       id: generateExpenseId(),
       title,
       amount: parseFloat(amount),
-      category,
       date: new Date(date),
       userId
     });
 
-    // Return expense without reloading with associations for troubleshooting
-    return expense;
+    // If tagIds were provided (not null), verify they belong to the user and associate them
+    if (tagIds !== undefined && tagIds !== null && tagIds.length > 0) {
+      // Validate that the tags belong to the current user
+      const userTags = await db.Tag.findAll({
+        where: {
+          id: tagIds,
+          userId: userId
+        }
+      });
+
+      if (userTags.length !== tagIds.length) {
+        // Some tags don't belong to the user
+        const validTagIds = userTags.map(tag => tag.id);
+        const invalidTagIds = tagIds.filter(id => !validTagIds.includes(id));
+        throw new Error(`Invalid tag IDs provided. You don't own these tags: ${invalidTagIds.join(', ')}`);
+      }
+
+      // Associate the tags with the expense
+      await expense.setTags(userTags);
+    }
+
+    // Return the expense with tags
+    const expenseWithTags = await Expense.findByPk(expense.id, {
+      include: [{
+        model: db.Tag,
+        as: 'tags',
+        through: { attributes: [] },
+        attributes: ['id', 'name', 'icon', 'createdAt', 'updatedAt']
+      }]
+    });
+
+    return expenseWithTags;
   } catch (error) {
     throw new Error(`Failed to create expense: ${error.message}`);
   }
@@ -87,10 +116,17 @@ export const updateExpense = async (id, updates, userId) => {
       throw new Error('Unauthorized: You can only update your own expenses');
     }
 
+    // Extract tagIds if provided, and other updates separately
+    const { tagIds, ...otherUpdates } = updates;
+
+    // Remove category from updates if it's included (since we removed the field)
+    const { category, ...cleanedUpdates } = otherUpdates;
+
+    // Update the expense with other fields
     const [updatedRowsCount] = await Expense.update({
-      ...updates,
-      amount: updates.amount ? parseFloat(updates.amount) : undefined,
-      date: updates.date ? new Date(updates.date) : undefined
+      ...cleanedUpdates,
+      amount: cleanedUpdates.amount ? parseFloat(cleanedUpdates.amount) : undefined,
+      date: cleanedUpdates.date ? new Date(cleanedUpdates.date) : undefined
     }, {
       where: { id }
     });
@@ -99,7 +135,43 @@ export const updateExpense = async (id, updates, userId) => {
       throw new Error('Expense not found');
     }
 
-    const updatedExpense = await Expense.findByPk(id); // Removed include for troubleshooting
+    // If tagIds were provided (not undefined/null), update the tags
+    if (tagIds !== undefined && tagIds !== null) {
+      if (Array.isArray(tagIds)) {
+        // Validate that the tags belong to the current user
+        if (tagIds.length > 0) {
+          const userTags = await db.Tag.findAll({
+            where: {
+              id: tagIds,
+              userId: userId
+            }
+          });
+
+          if (userTags.length !== tagIds.length) {
+            // Some tags don't belong to the user
+            const validTagIds = userTags.map(tag => tag.id);
+            const invalidTagIds = tagIds.filter(id => !validTagIds.includes(id));
+            throw new Error(`Invalid tag IDs provided. You don't own these tags: ${invalidTagIds.join(', ')}`);
+          }
+
+          // Associate the tags with the expense
+          await expense.setTags(userTags);
+        } else {
+          // Empty array means remove all tags
+          await expense.setTags([]);
+        }
+      }
+    }
+
+    // Return the updated expense with tags
+    const updatedExpense = await Expense.findByPk(id, {
+      include: [{
+        model: db.Tag,
+        as: 'tags',
+        through: { attributes: [] },
+        attributes: ['id', 'name', 'icon', 'createdAt', 'updatedAt']
+      }]
+    });
 
     return updatedExpense;
   } catch (error) {
@@ -153,6 +225,50 @@ export const deleteExpense = async (id, userId) => {
 // Get expenses with filtering options
 export const getExpensesWithFilters = async ({ userId, tagIds, excludeTagIds, dateFrom, dateTo, withoutTags }) => {
   try {
+    // Validate that the tags being used belong to the current user
+    if (userId) {
+      if (tagIds && tagIds.length > 0) {
+        const validTags = await db.Tag.findAll({
+          where: {
+            id: tagIds,
+            userId: userId
+          },
+          attributes: ['id']
+        });
+
+        const validTagIds = validTags.map(tag => tag.id);
+
+        // If there are invalid tag IDs, filter to only valid ones
+        if (validTagIds.length !== tagIds.length) {
+          // Log a warning or handle as appropriate for your use case
+          console.warn(`Some requested tag IDs do not belong to user ${userId}. Valid tags: ${validTagIds}`);
+          tagIds = validTagIds; // Use only valid tag IDs
+
+          // If no valid tags remain, return empty result
+          if (tagIds.length === 0) {
+            return [];
+          }
+        }
+      }
+
+      if (excludeTagIds && excludeTagIds.length > 0) {
+        const validExcludeTags = await db.Tag.findAll({
+          where: {
+            id: excludeTagIds,
+            userId: userId
+          },
+          attributes: ['id']
+        });
+
+        const validExcludeTagIds = validExcludeTags.map(tag => tag.id);
+
+        if (validExcludeTagIds.length !== excludeTagIds.length) {
+          console.warn(`Some exclude tag IDs do not belong to user ${userId}. Valid exclude tags: ${validExcludeTagIds}`);
+          excludeTagIds = validExcludeTagIds;
+        }
+      }
+    }
+
     // Build a raw SQL query with proper JOINs for efficient filtering
     let query = `
       SELECT DISTINCT e.*
@@ -195,12 +311,14 @@ export const getExpensesWithFilters = async ({ userId, tagIds, excludeTagIds, da
     // Exclude tag filtering
     if (excludeTagIds && excludeTagIds.length > 0) {
       // Using NOT EXISTS to exclude expenses that have any of the excluded tags
-      query += ` WHERE NOT EXISTS (
-        SELECT 1 FROM expense_tags et_excl
-        WHERE et_excl.expense_id = e.id
-        AND et_excl.tag_id IN (${excludeTagIds.map(() => '?').join(',')})
-      )`;
-      params.push(...excludeTagIds);
+      if (excludeTagIds.length > 0) {
+        query += ` WHERE NOT EXISTS (
+          SELECT 1 FROM expense_tags et_excl
+          WHERE et_excl.expense_id = e.id
+          AND et_excl.tag_id IN (${excludeTagIds.map(() => '?').join(',')})
+        )`;
+        params.push(...excludeTagIds);
+      }
     }
 
     // Combine conditions
@@ -291,10 +409,11 @@ export const getExpensesWithFilters = async ({ userId, tagIds, excludeTagIds, da
   }
 };
 
-// Get all tags
-export const getAllTags = async () => {
+// Get all tags for a specific user
+export const getUserTags = async (userId) => {
   try {
     return await db.Tag.findAll({
+      where: { userId },
       include: [{
         model: db.Expense,
         as: 'expenses',
@@ -329,21 +448,25 @@ export const getTagById = async (id) => {
 };
 
 // Create a new tag
-export const createTag = async ({ name, icon }) => {
+export const createTag = async ({ name, icon, userId }) => {
   try {
-    // Check if a tag with this name already exists
+    // Check if a tag with this name already exists for this user
     const existingTag = await db.Tag.findOne({
-      where: { name: name.trim() }
+      where: {
+        name: name.trim(),
+        userId: userId
+      }
     });
 
     if (existingTag) {
-      throw new Error('A tag with this name already exists');
+      throw new Error('A tag with this name already exists for this user');
     }
 
     const tag = await db.Tag.create({
       id: generateTagId(),
       name: name.trim(),
-      icon: icon || null  // Allow icon to be optional
+      icon: icon || null,  // Allow icon to be optional
+      userId: userId
     });
 
     return tag;
@@ -353,23 +476,47 @@ export const createTag = async ({ name, icon }) => {
 };
 
 // Update a tag
-export const updateTag = async (id, updates) => {
+export const updateTag = async (id, updates, userId) => {
   try {
+    // First check if the tag exists and belongs to the user
+    const existingTag = await db.Tag.findOne({
+      where: { id, userId }
+    });
+
+    if (!existingTag) {
+      throw new Error('Tag not found or unauthorized');
+    }
+
     const updateData = { ...updates };
 
     // Process the updates
     if (updates.name) {
       updateData.name = updates.name.trim();
+
+      // Check if a tag with this name already exists for this user (avoid duplicates)
+      const duplicateTag = await db.Tag.findOne({
+        where: {
+          name: updateData.name,
+          userId: userId,
+          id: { [db.Sequelize.Op.ne]: id } // Exclude current tag from check
+        }
+      });
+
+      if (duplicateTag) {
+        throw new Error('A tag with this name already exists for this user');
+      }
     }
 
     if (updates.icon !== undefined) {
       updateData.icon = updates.icon;
     }
 
-    const [updatedRowsCount] = await db.Tag.update(updateData, { where: { id } });
+    const [updatedRowsCount] = await db.Tag.update(updateData, {
+      where: { id, userId }
+    });
 
     if (updatedRowsCount === 0) {
-      throw new Error('Tag not found');
+      throw new Error('Tag not found or unauthorized');
     }
 
     const updatedTag = await db.Tag.findByPk(id);
@@ -380,10 +527,10 @@ export const updateTag = async (id, updates) => {
 };
 
 // Delete a tag
-export const deleteTag = async (id) => {
+export const deleteTag = async (id, userId) => {
   try {
     const deletedRowCount = await db.Tag.destroy({
-      where: { id }
+      where: { id, userId }
     });
 
     return deletedRowCount > 0;

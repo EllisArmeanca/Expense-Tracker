@@ -1,33 +1,40 @@
 import jwt from 'jsonwebtoken';
 import db from '../../models/index.js';
 
-const { User } = db;
+// Middleware to authenticate and authorize admin users
+const authenticateAdmin = async (req) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
 
-// Admin middleware to check for admin privileges
-const adminAuthMiddleware = async (req, res, next) => {
-  // Extract token from Authorization header
-  const authHeader = req.headers.authorization;
-  const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+  let user = null;
+  
+  if (token) {
+    try {
+      // Verify token with OAuth-compliant claims checking
+      const decoded = jwt.verify(token, process.env.JWT_SECRET, {
+        algorithms: ['HS256'],  // Specify allowed algorithms
+        issuer: 'expense-tracker',  // Validate issuer
+        audience: 'expense-tracker-users'  // Validate audience
+      });
 
-  if (!token) {
-    return res.status(401).json({ error: 'Access token required' });
-  }
+      // Fetch the user from the database using the subject claim (sub)
+      user = await db.User.findByPk(decoded.sub, {
+        attributes: { exclude: ['password'] }
+      });
 
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-    // Find user from database and check if they are admin
-    const user = await User.findByPk(decoded.sub);
-
-    if (!user || !user.isAdmin) {
-      return res.status(403).json({ error: 'Admin access required' });
+      // Check if user is an admin
+      if (!user || !user.isAdmin) {
+        throw new Error('Access denied. Admin privileges required.');
+      }
+    } catch (error) {
+      // Token is invalid or user is not an admin
+      throw new Error(error.message || 'Unauthorized: Admin access required');
     }
-
-    req.user = user; // Attach user object instead of just decoded data
-    next();
-  } catch (error) {
-    return res.status(401).json({ error: 'Invalid or expired token' });
+  } else {
+    throw new Error('Authorization header missing');
   }
+
+  return user;
 };
 
-export default adminAuthMiddleware;
+export default authenticateAdmin;

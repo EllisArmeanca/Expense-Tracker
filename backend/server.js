@@ -7,6 +7,7 @@ import jwt from 'jsonwebtoken';
 import { createHandler } from 'graphql-http/lib/use/express';
 import { schema } from './src/graphql/schema.js';
 import authenticateToken from './src/middleware/auth.js';
+import authenticateAdmin from './src/middleware/adminAuth.js';
 import { sequelize } from './config/database.js'; // Import sequelize instance
 import winston from 'winston';
 import db from './models/index.js';
@@ -75,7 +76,7 @@ app.use((req, res, next) => {
 });
 
 
-// GraphQL endpoint with context
+// GraphQL endpoint with context for regular users
 app.use('/graphql', createHandler({
   schema,
   context: async (req) => {
@@ -105,6 +106,31 @@ app.use('/graphql', createHandler({
 
     // Return context with request and user info
     return { req, user };
+  }
+}));
+
+// Admin GraphQL endpoint with admin authentication
+app.use('/admin/gql', async (req, res, next) => {
+  try {
+    const user = await authenticateAdmin(req);
+    req.adminUser = user; // Store admin user in request object
+    next();
+  } catch (error) {
+    res.status(401).json({
+      error: 'Unauthorized',
+      message: error.message
+    });
+    return;
+  }
+}, createHandler({
+  schema, // Use the same schema for simplicity
+  context: async (req) => {
+    // Context for admin endpoint
+    return {
+      req,
+      user: req.adminUser, // Pass the authenticated admin user
+      isAdmin: true // Indicate this is an admin context
+    };
   }
 }));
 

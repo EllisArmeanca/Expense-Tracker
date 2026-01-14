@@ -13,8 +13,12 @@ export const expenseResolvers = {
           throw new Error('Unauthorized: You can only view your own expenses');
         }
       } else {
-        // If no userId provided, may require admin privileges depending on your business logic
-        // For now, we'll allow viewing all expenses to the authenticated user who owns those expenses
+        // If no userId provided, default to the current user's expenses
+        if (user) {
+          userId = user.id;
+        } else {
+          throw new Error('Authentication required');
+        }
       }
 
       return await expenseController.getExpensesWithFilters({
@@ -31,20 +35,32 @@ export const expenseResolvers = {
       return await expenseController.getExpenseById(id, userId);
     },
     // Tag queries
-    tags: async () => {
-      return await expenseController.getAllTags();
+    tags: async (_, __, { req, user }) => {
+      if (!user) {
+        throw new Error('Authentication required');
+      }
+      return await expenseController.getUserTags(user.id);
     },
-    tag: async (_, { id }) => {
-      return await expenseController.getTagById(id);
+    tag: async (_, { id }, { req, user }) => {
+      // Verify user is authenticated
+      if (!user) {
+        throw new Error('Authentication required');
+      }
+      const tag = await expenseController.getTagById(id);
+      // Check that the tag belongs to the current user
+      if (tag && tag.userId !== user.id) {
+        throw new Error('Unauthorized: You can only access your own tags');
+      }
+      return tag;
     }
   },
   mutations: {
-    createExpense: async (_, { title, amount, category, date, userId }, { req, user }) => {
+    createExpense: async (_, { title, amount, date, userId, tagIds }, { req, user }) => {
       // Check if the user is authenticated and creating for themselves
       if (!user || user.id !== userId) {
         throw new Error('Unauthorized: You can only create expenses for yourself');
       }
-      return await expenseController.createExpense({ title, amount, category, date, userId });
+      return await expenseController.createExpense({ title, amount, date, userId, tagIds });
     },
     updateExpense: async (_, { id, ...updates }, { req, user }) => {
       // Check if user is authenticated
@@ -65,7 +81,7 @@ export const expenseResolvers = {
       if (!user) {
         throw new Error('Authentication required');
       }
-      return await expenseController.createTag({ name, icon });
+      return await expenseController.createTag({ name, icon, userId: user.id });
     },
     updateTag: async (_, { id, name, icon }, { req, user }) => {
       if (!user) {
@@ -74,13 +90,13 @@ export const expenseResolvers = {
       const updates = {};
       if (name) updates.name = name;
       if (icon !== undefined) updates.icon = icon;
-      return await expenseController.updateTag(id, updates);
+      return await expenseController.updateTag(id, updates, user.id);
     },
     deleteTag: async (_, { id }, { req, user }) => {
       if (!user) {
         throw new Error('Authentication required');
       }
-      return await expenseController.deleteTag(id);
+      return await expenseController.deleteTag(id, user.id);
     },
     // Expense tag management mutations
     addTagToExpense: async (_, { expenseId, tagId }, { req, user }) => {
