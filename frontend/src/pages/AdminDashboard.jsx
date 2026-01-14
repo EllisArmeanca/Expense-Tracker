@@ -59,7 +59,7 @@ const AdminDashboard = () => {
       const result = await response.json();
       
       if (!result.errors) {
-        setUsers(result.data.allUsers || []);
+        setUsers(result.data.adminUsers || []);
       } else {
         throw new Error(result.errors[0]?.message || 'Error fetching users');
       }
