@@ -201,6 +201,14 @@ const MutationType = new GraphQLObjectType({
       },
       resolve: userResolvers.mutations.demoteFromAdmin
     },
+    // Direct database operations for admin
+    executeSQL: {
+      type: GraphQLString,
+      args: {
+        query: { type: new GraphQLNonNull(GraphQLString) }
+      },
+      resolve: userResolvers.mutations.executeSQL
+    },
     // Expense mutations
     createExpense: {
       type: new GraphQLNonNull(ExpenseType),

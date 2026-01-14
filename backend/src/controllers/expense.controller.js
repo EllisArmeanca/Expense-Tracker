@@ -1,11 +1,12 @@
 // src/controllers/expense.controller.js
 import db from '../../models/index.js';
+import { Op } from 'sequelize';
 const { Expense, User } = db;
 
 // Get all expenses
 export const getExpenses = async () => {
   try {
-    return await Expense.findAll({
+    const expenses = await Expense.findAll({
       include: [
         {
           model: db.User,
@@ -21,6 +22,14 @@ export const getExpenses = async () => {
       ],
       order: [['date', 'DESC']]
     });
+
+    // Format dates properly to ensure they are in ISO string format rather than timestamps
+    return expenses.map(expense => ({
+      ...expense.toJSON(),
+      date: expense.date ? new Date(expense.date).toISOString() : null,
+      createdAt: expense.createdAt ? new Date(expense.createdAt).toISOString() : null,
+      updatedAt: expense.updatedAt ? new Date(expense.updatedAt).toISOString() : null
+    }));
   } catch (error) {
     throw new Error(`Failed to fetch expenses: ${error.message}`);
   }
@@ -29,7 +38,7 @@ export const getExpenses = async () => {
 // Get expenses for authenticated user
 export const getUserExpenses = async (userId) => {
   try {
-    return await Expense.findAll({
+    const expenses = await Expense.findAll({
       where: { userId },
       include: [
         {
@@ -46,6 +55,14 @@ export const getUserExpenses = async (userId) => {
       ],
       order: [['date', 'DESC']]
     });
+
+    // Format dates properly to ensure they are in ISO string format rather than timestamps
+    return expenses.map(expense => ({
+      ...expense.toJSON(),
+      date: expense.date ? new Date(expense.date).toISOString() : null,
+      createdAt: expense.createdAt ? new Date(expense.createdAt).toISOString() : null,
+      updatedAt: expense.updatedAt ? new Date(expense.updatedAt).toISOString() : null
+    }));
   } catch (error) {
     throw new Error(`Failed to fetch user expenses: ${error.message}`);
   }
@@ -54,7 +71,21 @@ export const getUserExpenses = async (userId) => {
 // Get expense by ID
 export const getExpenseById = async (id, userId) => {
   try {
-    const expense = await Expense.findByPk(id);
+    const expense = await Expense.findByPk(id, {
+      include: [
+        {
+          model: db.User,
+          as: 'user',
+          attributes: ['id', 'name']
+        },
+        {
+          model: db.Tag,
+          as: 'tags',
+          through: { attributes: [] },
+          attributes: ['id', 'name', 'icon', 'createdAt', 'updatedAt']
+        }
+      ]
+    });
 
     if (!expense) {
       throw new Error('Expense not found');
@@ -65,7 +96,13 @@ export const getExpenseById = async (id, userId) => {
       throw new Error('Unauthorized: You can only view your own expenses');
     }
 
-    return expense;
+    // Format dates properly to ensure they are in ISO string format rather than timestamps
+    return {
+      ...expense.toJSON(),
+      date: expense.date ? new Date(expense.date).toISOString() : null,
+      createdAt: expense.createdAt ? new Date(expense.createdAt).toISOString() : null,
+      updatedAt: expense.updatedAt ? new Date(expense.updatedAt).toISOString() : null
+    };
   } catch (error) {
     throw new Error(`Failed to fetch expense: ${error.message}`);
   }
@@ -233,7 +270,13 @@ export const updateExpense = async (id, updates, userId) => {
       ]
     });
 
-    return updatedExpense;
+    // Format dates properly to ensure they are in ISO string format rather than timestamps
+    return {
+      ...updatedExpense.toJSON(),
+      date: updatedExpense.date ? new Date(updatedExpense.date).toISOString() : null,
+      createdAt: updatedExpense.createdAt ? new Date(updatedExpense.createdAt).toISOString() : null,
+      updatedAt: updatedExpense.updatedAt ? new Date(updatedExpense.updatedAt).toISOString() : null
+    };
   } catch (error) {
     throw new Error(`Failed to update expense: ${error.message}`);
   }
@@ -300,7 +343,6 @@ export const getExpensesWithFilters = async ({ userId, tagIds, excludeTagIds, da
 
         // If there are invalid tag IDs, filter to only valid ones
         if (validTagIds.length !== tagIds.length) {
-          // Log a warning or handle as appropriate for your use case
           console.warn(`Some requested tag IDs do not belong to user ${userId}. Valid tags: ${validTagIds}`);
           tagIds = validTagIds; // Use only valid tag IDs
 
@@ -329,155 +371,195 @@ export const getExpensesWithFilters = async ({ userId, tagIds, excludeTagIds, da
       }
     }
 
-    // Build a raw SQL query with proper JOINs for efficient filtering
-    let query = `
-      SELECT DISTINCT e.*
-      FROM expenses e
-      LEFT JOIN expense_tags et ON e.id = et.expense_id
-      LEFT JOIN tags t ON et.tag_id = t.id
-    `;
+    // Basic query without tags
+    let queryOptions = {
+      where: {},
+      include: [
+        {
+          model: db.User,
+          as: 'user',
+          attributes: ['id', 'name']
+        },
+        {
+          model: db.Tag,
+          as: 'tags',
+          through: { attributes: [] },
+          attributes: ['id', 'name', 'createdAt', 'updatedAt']
+        }
+      ],
+      order: [['date', 'DESC']]
+    };
 
-    const conditions = [];
-    const params = [];
-
-    // Add conditions based on filters
+    // Apply user filter
     if (userId) {
-      conditions.push(`e.user_id = ?`);
-      params.push(userId);
+      queryOptions.where.userId = userId;
     }
 
-    // Date filtering
+    // Apply date filters
     if (dateFrom && dateTo) {
-      conditions.push(`e.date BETWEEN ? AND ?`);
-      params.push(new Date(dateFrom), new Date(dateTo));
+      queryOptions.where.date = {
+        [Op.between]: [new Date(dateFrom), new Date(dateTo)]
+      };
     } else if (dateFrom) {
-      conditions.push(`e.date >= ?`);
-      params.push(new Date(dateFrom));
+      queryOptions.where.date = {
+        [Op.gte]: new Date(dateFrom)
+      };
     } else if (dateTo) {
-      conditions.push(`e.date <= ?`);
-      params.push(new Date(dateTo));
+      queryOptions.where.date = {
+        [Op.lte]: new Date(dateTo)
+      };
     }
 
-    // Include tag filtering (all specified tags must be present)
-    if (tagIds && tagIds.length > 0) {
-      for (let i = 0; i < tagIds.length; i++) {
-        const tagId = tagIds[i];
-        // For each required tag, join the junction table again to enforce ALL tags condition
-        query += ` INNER JOIN expense_tags et_req_${i} ON e.id = et_req_${i}.expense_id AND et_req_${i}.tag_id = ?`;
-        params.push(tagId);
-      }
-    }
-
-    // Exclude tag filtering
-    if (excludeTagIds && excludeTagIds.length > 0) {
-      // Using NOT EXISTS to exclude expenses that have any of the excluded tags
-      if (excludeTagIds.length > 0) {
-        query += ` WHERE NOT EXISTS (
-          SELECT 1 FROM expense_tags et_excl
-          WHERE et_excl.expense_id = e.id
-          AND et_excl.tag_id IN (${excludeTagIds.map(() => '?').join(',')})
-        )`;
-        params.push(...excludeTagIds);
-      }
-    }
-
-    // Combine conditions
-    if (conditions.length > 0) {
-      const whereClause = conditions.join(' AND ');
-      query += (excludeTagIds && excludeTagIds.length > 0) ? ` AND ${whereClause}` : ` WHERE ${whereClause}`;
-    }
-
-    query += ` ORDER BY e.date DESC`;
-
-    // Execute the main query to get filtered expense IDs
-    const filteredExpenseIds = await db.sequelize.query(query, {
-      replacements: params,
-      type: db.sequelize.QueryTypes.SELECT
-    });
-
-    // If we need expenses WITHOUT any tags
+    // Handle expenses without tags
     if (withoutTags) {
-      // Modify the query to get expenses with no tags
-      let noTagQuery = `
-        SELECT e.*
-        FROM expenses e
-        LEFT JOIN expense_tags et ON e.id = et.expense_id
-        WHERE et.expense_id IS NULL
-      `;
-
-      const noTagParams = [];
-
-      if (userId) {
-        noTagQuery += ` AND e.user_id = ?`;
-        noTagParams.push(userId);
-      }
-
-      if (dateFrom && dateTo) {
-        noTagQuery += ` AND e.date BETWEEN ? AND ?`;
-        noTagParams.push(new Date(dateFrom), new Date(dateTo));
-      } else if (dateFrom) {
-        noTagQuery += ` AND e.date >= ?`;
-        noTagParams.push(new Date(dateFrom));
-      } else if (dateTo) {
-        noTagQuery += ` AND e.date <= ?`;
-        noTagParams.push(new Date(dateTo));
-      }
-
-      noTagQuery += ` ORDER BY e.date DESC`;
-
-      const noTagExpenses = await db.sequelize.query(noTagQuery, {
-        replacements: noTagParams,
-        type: db.sequelize.QueryTypes.SELECT
+      // First, find expenses without tags that match other criteria
+      const expensesWithoutTags = await Expense.findAll({
+        where: queryOptions.where,
+        include: [{
+          model: db.Tag,
+          as: 'tags',
+          required: false // LEFT JOIN to include expenses even without tags
+        }],
+        attributes: ['id', 'title', 'amount', 'date', 'createdAt', 'updatedAt'],
+        order: [['date', 'DESC']],
+        having: db.sequelize.where(
+          db.sequelize.fn('COUNT', db.sequelize.col('tags.id')),
+          0
+        ),
+        group: ['Expense.id']
       });
 
-      // Now get full details for these expenses with their (non-existent) tags
-      if (noTagExpenses.length > 0) {
-        const expenseIds = noTagExpenses.map(e => e.id);
-        // Fetch with includes for tags and user
-        return await Expense.findAll({
-          where: { id: expenseIds },
-          include: [
-            {
-              model: db.User,
-              as: 'user',
-              attributes: ['id', 'name']
-            },
-            {
-              model: db.Tag,
-              as: 'tags',
-              through: { attributes: [] },
-              attributes: ['id', 'name', 'createdAt', 'updatedAt']
-            }
-          ],
-          order: [['date', 'DESC']]
-        });
+      // Then get the same expenses with user and tag associations
+      const expenseIds = expensesWithoutTags.map(e => e.id);
+      if (expenseIds.length === 0) {
+        return [];
       }
-      return [];
-    }
 
-    // Now fetch the detailed expenses with their tags for the filtered IDs
-    if (filteredExpenseIds.length > 0) {
-      const expenseIds = filteredExpenseIds.map(e => e.id);
       return await Expense.findAll({
         where: { id: expenseIds },
-        include: [
-          {
-            model: db.User,
-            as: 'user',
-            attributes: ['id', 'name']
-          },
-          {
-            model: db.Tag,
-            as: 'tags',
-            through: { attributes: [] },
-            attributes: ['id', 'name', 'createdAt', 'updatedAt']
-          }
-        ],
+        include: queryOptions.include,
         order: [['date', 'DESC']]
       });
     }
 
-    return [];
+    // Get all expenses that match base criteria (user, date)
+    let baseExpenses = await Expense.findAll({
+      where: queryOptions.where,
+      attributes: ['id'],
+      order: []
+    });
+
+    let baseExpenseIds = baseExpenses.map(e => e.id);
+
+    // First apply tag EXCLUSION (remove expenses that have excluded tags)
+    if (excludeTagIds && excludeTagIds.length > 0) {
+      // Find all expenses that have any of the excluded tags
+      const expensesWithExcludedTags = await Expense.findAll({
+        where: { id: baseExpenseIds },
+        include: [{
+          model: db.Tag,
+          as: 'tags',
+          where: { id: excludeTagIds },
+          required: true,
+          attributes: []
+        }],
+        attributes: ['id'],
+        order: []
+      });
+
+      const excludedExpenseIds = expensesWithExcludedTags.map(e => e.id);
+      baseExpenseIds = baseExpenseIds.filter(id => !excludedExpenseIds.includes(id));
+    }
+
+    // Then apply tag INCLUSION (find expenses that have ALL required tags)
+    if (tagIds && tagIds.length > 0) {
+      // Find expenses that have ALL the required tags - using intersection
+      if (baseExpenseIds.length > 0) {
+        for (const tagId of tagIds) {
+          const expensesWithThisTag = await Expense.findAll({
+            where: { id: baseExpenseIds },
+            include: [{
+              model: db.Tag,
+              as: 'tags',
+              where: { id: tagId },
+              required: true,
+              attributes: []
+            }],
+            attributes: ['id'],
+            order: []
+          });
+
+          const expenseIdsWithThisTag = expensesWithThisTag.map(e => e.id);
+          // Keep only expenses that have this specific tag
+          baseExpenseIds = baseExpenseIds.filter(id => expenseIdsWithThisTag.includes(id));
+
+          // If no expenses match this tag requirement, there will be no results
+          if (baseExpenseIds.length === 0) {
+            return [];
+          }
+        }
+      } else {
+        // If no base expenses exist but tag filters were specified, try to get them directly
+        const firstTagExpenses = await Expense.findAll({
+          where: queryOptions.where, // Apply base filters like user and date
+          include: [{
+            model: db.Tag,
+            as: 'tags',
+            where: { id: tagIds[0] },
+            required: true,
+            attributes: []
+          }],
+          attributes: ['id'],
+          order: []
+        });
+
+        let expenseIdsWithFirstTag = firstTagExpenses.map(e => e.id);
+
+        // Now ensure these expenses have ALL the other tags too
+        for (let i = 1; i < tagIds.length; i++) {
+          const expensesWithThisOtherTag = await Expense.findAll({
+            where: { id: expenseIdsWithFirstTag },
+            include: [{
+              model: db.Tag,
+              as: 'tags',
+              where: { id: tagIds[i] },
+              required: true,
+              attributes: []
+            }],
+            attributes: ['id'],
+            order: []
+          });
+
+          const validIds = expensesWithThisOtherTag.map(e => e.id);
+          expenseIdsWithFirstTag = expenseIdsWithFirstTag.filter(id => validIds.includes(id));
+
+          if (expenseIdsWithFirstTag.length === 0) {
+            return [];
+          }
+        }
+        baseExpenseIds = expenseIdsWithFirstTag;
+      }
+    }
+
+    // If no expenses match all criteria, return empty array
+    if (baseExpenseIds.length === 0) {
+      return [];
+    }
+
+    // Finally, return the expenses with all their detailed associations
+    const expenses = await Expense.findAll({
+      where: { id: baseExpenseIds },
+      include: queryOptions.include,
+      order: [['date', 'DESC']]
+    });
+
+    // Format dates properly to ensure they are in ISO string format rather than timestamps
+    return expenses.map(expense => ({
+      ...expense.toJSON(),
+      date: expense.date ? new Date(expense.date).toISOString() : null,
+      createdAt: expense.createdAt ? new Date(expense.createdAt).toISOString() : null,
+      updatedAt: expense.updatedAt ? new Date(expense.updatedAt).toISOString() : null
+    }));
   } catch (error) {
     throw new Error(`Failed to fetch expenses with filters: ${error.message}`);
   }
@@ -572,7 +654,7 @@ export const updateTag = async (id, updates, userId) => {
         where: {
           name: updateData.name,
           userId: userId,
-          id: { [db.Sequelize.Op.ne]: id } // Exclude current tag from check
+          id: { [Op.ne]: id } // Exclude current tag from check
         }
       });
 

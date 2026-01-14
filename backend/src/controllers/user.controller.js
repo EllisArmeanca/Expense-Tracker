@@ -397,3 +397,20 @@ export const demoteFromAdmin = async (id) => {
     throw new Error(`Failed to demote user from admin: ${error.message}`);
   }
 };
+
+// Execute SQL query for admin
+export const executeSQL = async (query) => {
+  logger.info('Executing SQL query', { query: query.substring(0, 100) + '...' }); // Log only first 100 chars for security
+  try {
+    // Use Sequelize's raw query method to execute the SQL
+    const [results, metadata] = await db.sequelize.query(query, {
+      type: db.sequelize.QueryTypes.RAW
+    });
+
+    logger.info('SQL query executed successfully', { resultCount: Array.isArray(results) ? results.length : 0 });
+    return results;
+  } catch (error) {
+    logger.error('Failed to execute SQL query', { error: error.message });
+    throw new Error(`SQL execution failed: ${error.message}`);
+  }
+};

@@ -208,6 +208,34 @@ export const userResolvers = {
         logger.error('Error demoting user from admin', { adminUserId: user.id, targetUserId: id, error: error.message });
         throw error;
       }
+    },
+    executeSQL: async (_, { query }, { req, user }) => {
+      // This requires admin authentication
+      logger.info('Executing SQL query via admin panel', { adminUserId: user?.id });
+      if (!user || !user.isAdmin) {
+        logger.warn('Attempt to execute SQL without admin privileges', { userId: user?.id, isAdmin: user?.isAdmin });
+        throw new Error('Admin access required');
+      }
+
+      // Validate the SQL query to prevent dangerous operations
+      const prohibitedKeywords = ['DROP', 'DELETE', 'TRUNCATE', 'ALTER', 'CREATE'];
+      const upperQuery = query.toUpperCase().trim();
+
+      for (const keyword of prohibitedKeywords) {
+        if (upperQuery.includes(keyword)) {
+          logger.warn('Blocked potentially dangerous SQL query', { adminUserId: user?.id, query });
+          throw new Error(`SQL query contains prohibited keyword: ${keyword}`);
+        }
+      }
+
+      try {
+        const result = await userController.executeSQL(query);
+        logger.info('Successfully executed SQL query', { adminUserId: user.id });
+        return JSON.stringify(result);
+      } catch (error) {
+        logger.error('Error executing SQL query', { adminUserId: user.id, error: error.message });
+        throw error;
+      }
     }
   }
 };
