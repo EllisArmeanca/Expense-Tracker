@@ -55,12 +55,12 @@ export const expenseResolvers = {
     }
   },
   mutations: {
-    createExpense: async (_, { title, amount, date, userId, tagIds }, { req, user }) => {
-      // Check if the user is authenticated and creating for themselves
-      if (!user || user.id !== userId) {
-        throw new Error('Unauthorized: You can only create expenses for yourself');
+    createExpense: async (_, { title, amount, date, tagIds }, { req, user }) => {
+      // Check if the user is authenticated
+      if (!user) {
+        throw new Error('Authentication required');
       }
-      return await expenseController.createExpense({ title, amount, date, userId, tagIds });
+      return await expenseController.createExpense({ title, amount, date, tagIds }, user.id);
     },
     updateExpense: async (_, { id, ...updates }, { req, user }) => {
       // Check if user is authenticated

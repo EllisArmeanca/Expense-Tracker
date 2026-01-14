@@ -5,8 +5,20 @@ const { Expense, User } = db;
 // Get all expenses
 export const getExpenses = async () => {
   try {
-    // Temporarily removing include to troubleshoot
     return await Expense.findAll({
+      include: [
+        {
+          model: db.User,
+          as: 'user',
+          attributes: ['id', 'name']
+        },
+        {
+          model: db.Tag,
+          as: 'tags',
+          through: { attributes: [] },
+          attributes: ['id', 'name', 'icon', 'createdAt', 'updatedAt']
+        }
+      ],
       order: [['date', 'DESC']]
     });
   } catch (error) {
@@ -17,9 +29,21 @@ export const getExpenses = async () => {
 // Get expenses for authenticated user
 export const getUserExpenses = async (userId) => {
   try {
-    // Temporarily removing include to troubleshoot
     return await Expense.findAll({
       where: { userId },
+      include: [
+        {
+          model: db.User,
+          as: 'user',
+          attributes: ['id', 'name']
+        },
+        {
+          model: db.Tag,
+          as: 'tags',
+          through: { attributes: [] },
+          attributes: ['id', 'name', 'icon', 'createdAt', 'updatedAt']
+        }
+      ],
       order: [['date', 'DESC']]
     });
   } catch (error) {
@@ -48,10 +72,10 @@ export const getExpenseById = async (id, userId) => {
 };
 
 // Create a new expense
-export const createExpense = async ({ title, amount, date, userId, tagIds }) => {
+export const createExpense = async ({ title, amount, date, tagIds }, authenticatedUserId) => {
   try {
     // Validate that user exists
-    const user = await User.findByPk(userId);
+    const user = await User.findByPk(authenticatedUserId);
 
     if (!user) {
       throw new Error('User not found');
@@ -63,7 +87,7 @@ export const createExpense = async ({ title, amount, date, userId, tagIds }) => 
       title,
       amount: parseFloat(amount),
       date: new Date(date),
-      userId
+      userId: authenticatedUserId
     });
 
     // If tagIds were provided (not null), verify they belong to the user and associate them
@@ -72,7 +96,7 @@ export const createExpense = async ({ title, amount, date, userId, tagIds }) => 
       const userTags = await db.Tag.findAll({
         where: {
           id: tagIds,
-          userId: userId
+          userId: authenticatedUserId
         }
       });
 
@@ -83,18 +107,35 @@ export const createExpense = async ({ title, amount, date, userId, tagIds }) => 
         throw new Error(`Invalid tag IDs provided. You don't own these tags: ${invalidTagIds.join(', ')}`);
       }
 
-      // Associate the tags with the expense
-      await expense.setTags(userTags);
+      // Create associations manually in the junction table to ensure proper ID generation
+      if (userTags.length > 0) {
+        for (const tag of userTags) {
+          await db.sequelize.query(
+            `INSERT INTO expense_tags (id, expense_id, tag_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+            {
+              replacements: [generateExpenseTagId(), expense.id, tag.id, new Date(), new Date()],
+              type: db.sequelize.QueryTypes.INSERT
+            }
+          );
+        }
+      }
     }
 
-    // Return the expense with tags
+    // Return the expense with tags and user
     const expenseWithTags = await Expense.findByPk(expense.id, {
-      include: [{
-        model: db.Tag,
-        as: 'tags',
-        through: { attributes: [] },
-        attributes: ['id', 'name', 'icon', 'createdAt', 'updatedAt']
-      }]
+      include: [
+        {
+          model: db.User,
+          as: 'user',
+          attributes: ['id', 'name'] // Only include necessary user fields
+        },
+        {
+          model: db.Tag,
+          as: 'tags',
+          through: { attributes: [] },
+          attributes: ['id', 'name', 'icon', 'createdAt', 'updatedAt']
+        }
+      ]
     });
 
     return expenseWithTags;
@@ -154,8 +195,20 @@ export const updateExpense = async (id, updates, userId) => {
             throw new Error(`Invalid tag IDs provided. You don't own these tags: ${invalidTagIds.join(', ')}`);
           }
 
-          // Associate the tags with the expense
-          await expense.setTags(userTags);
+          // Clear existing tags first
+          await expense.setTags([]); // This removes all current tag associations
+          // Manually create the many-to-many associations to ensure junction table IDs are properly set
+          if (userTags.length > 0) {
+            for (const tag of userTags) {
+              await db.sequelize.query(
+                `INSERT INTO expense_tags (id, expense_id, tag_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+                {
+                  replacements: [generateExpenseTagId(), expense.id, tag.id, new Date(), new Date()],
+                  type: db.sequelize.QueryTypes.INSERT
+                }
+              );
+            }
+          }
         } else {
           // Empty array means remove all tags
           await expense.setTags([]);
@@ -163,14 +216,21 @@ export const updateExpense = async (id, updates, userId) => {
       }
     }
 
-    // Return the updated expense with tags
+    // Return the updated expense with tags and user
     const updatedExpense = await Expense.findByPk(id, {
-      include: [{
-        model: db.Tag,
-        as: 'tags',
-        through: { attributes: [] },
-        attributes: ['id', 'name', 'icon', 'createdAt', 'updatedAt']
-      }]
+      include: [
+        {
+          model: db.User,
+          as: 'user',
+          attributes: ['id', 'name'] // Only include necessary user fields
+        },
+        {
+          model: db.Tag,
+          as: 'tags',
+          through: { attributes: [] },
+          attributes: ['id', 'name', 'icon', 'createdAt', 'updatedAt']
+        }
+      ]
     });
 
     return updatedExpense;
@@ -373,15 +433,22 @@ export const getExpensesWithFilters = async ({ userId, tagIds, excludeTagIds, da
       // Now get full details for these expenses with their (non-existent) tags
       if (noTagExpenses.length > 0) {
         const expenseIds = noTagExpenses.map(e => e.id);
-        // Fetch with includes for tags
+        // Fetch with includes for tags and user
         return await Expense.findAll({
           where: { id: expenseIds },
-          include: [{
-            model: db.Tag,
-            as: 'tags',
-            through: { attributes: [] },
-            attributes: ['id', 'name', 'createdAt', 'updatedAt']
-          }],
+          include: [
+            {
+              model: db.User,
+              as: 'user',
+              attributes: ['id', 'name']
+            },
+            {
+              model: db.Tag,
+              as: 'tags',
+              through: { attributes: [] },
+              attributes: ['id', 'name', 'createdAt', 'updatedAt']
+            }
+          ],
           order: [['date', 'DESC']]
         });
       }
@@ -393,12 +460,19 @@ export const getExpensesWithFilters = async ({ userId, tagIds, excludeTagIds, da
       const expenseIds = filteredExpenseIds.map(e => e.id);
       return await Expense.findAll({
         where: { id: expenseIds },
-        include: [{
-          model: db.Tag,
-          as: 'tags',
-          through: { attributes: [] },
-          attributes: ['id', 'name', 'createdAt', 'updatedAt']
-        }],
+        include: [
+          {
+            model: db.User,
+            as: 'user',
+            attributes: ['id', 'name']
+          },
+          {
+            model: db.Tag,
+            as: 'tags',
+            through: { attributes: [] },
+            attributes: ['id', 'name', 'createdAt', 'updatedAt']
+          }
+        ],
         order: [['date', 'DESC']]
       });
     }
@@ -557,14 +631,21 @@ export const addTagToExpense = async (expenseId, tagId) => {
     // Add the tag to the expense (this creates the junction record)
     await expense.addTag(tagId, { through: { id: generateExpenseTagId() }});
 
-    // Return the updated expense with tags
+    // Return the updated expense with tags and user
     const updatedExpense = await Expense.findByPk(expenseId, {
-      include: [{
-        model: db.Tag,
-        as: 'tags',
-        through: { attributes: [] },
-        attributes: ['id', 'name', 'createdAt', 'updatedAt']
-      }]
+      include: [
+        {
+          model: db.User,
+          as: 'user',
+          attributes: ['id', 'name']
+        },
+        {
+          model: db.Tag,
+          as: 'tags',
+          through: { attributes: [] },
+          attributes: ['id', 'name', 'createdAt', 'updatedAt']
+        }
+      ]
     });
 
     return updatedExpense;
@@ -591,14 +672,21 @@ export const removeTagFromExpense = async (expenseId, tagId) => {
     // Remove the tag from the expense (this removes the junction record)
     await expense.removeTag(tagId);
 
-    // Return the updated expense with remaining tags
+    // Return the updated expense with remaining tags and user
     const updatedExpense = await Expense.findByPk(expenseId, {
-      include: [{
-        model: db.Tag,
-        as: 'tags',
-        through: { attributes: [] },
-        attributes: ['id', 'name', 'createdAt', 'updatedAt']
-      }]
+      include: [
+        {
+          model: db.User,
+          as: 'user',
+          attributes: ['id', 'name']
+        },
+        {
+          model: db.Tag,
+          as: 'tags',
+          through: { attributes: [] },
+          attributes: ['id', 'name', 'createdAt', 'updatedAt']
+        }
+      ]
     });
 
     return updatedExpense;

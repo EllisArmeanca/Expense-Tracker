@@ -15,6 +15,8 @@ import ResponsiveLayout from '@/components/layout/ResponsiveLayout';
 import StackLayout from '@/components/layout/StackLayout';
 import ExpensesPage from '@/pages/Expenses';
 import SettingsPage from '@/pages/Settings';
+import AddExpensePage from '@/pages/AddExpensePage';
+import CategoriesPage from '@/pages/CategoriesPage';
 
 // Simple test component
 const TestComponent = () => {
@@ -142,6 +144,20 @@ function App() {
                         <StackLayout>
                           <SettingsPage />
                         </StackLayout>
+                      </ResponsiveLayout>
+                    </RequireAuth>
+                  } />
+                  <Route path="/add-expense" element={
+                    <RequireAuth>
+                      <ResponsiveLayout>
+                        <AddExpensePage />
+                      </ResponsiveLayout>
+                    </RequireAuth>
+                  } />
+                  <Route path="/categories" element={
+                    <RequireAuth>
+                      <ResponsiveLayout>
+                        <CategoriesPage />
                       </ResponsiveLayout>
                     </RequireAuth>
                   } />

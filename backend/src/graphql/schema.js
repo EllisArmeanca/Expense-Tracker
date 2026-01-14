@@ -208,7 +208,6 @@ const MutationType = new GraphQLObjectType({
         title: { type: new GraphQLNonNull(GraphQLString) },
         amount: { type: new GraphQLNonNull(GraphQLFloat) },
         date: { type: new GraphQLNonNull(GraphQLString) },
-        userId: { type: new GraphQLNonNull(GraphQLID) },
         tagIds: { type: new GraphQLList(GraphQLID) } // Array of tag IDs to associate with the expense
       },
       resolve: expenseResolvers.mutations.createExpense

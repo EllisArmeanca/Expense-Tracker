@@ -20,20 +20,6 @@ import {
 import ExpenditureIncomeChart from '@/components/custom/ExpenditureIncomeChart';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { 
-  Drawer,
-  DrawerClose,
-  DrawerContent,
-  DrawerDescription,
-  DrawerFooter,
-  DrawerHeader,
-  DrawerTitle,
-  DrawerTrigger
-} from '@/components/ui/drawer';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const Dashboard = () => {
   const { user } = useAuth();
@@ -45,149 +31,12 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   
-  // State for the expense/income form
-  const [formData, setFormData] = useState({
-    amount: '',
-    description: '',
-    tags: [], // Array of selected tags (replacing category)
-    type: 'expense', // 'expense' or 'income'
-    date: new Date().toISOString().split('T')[0]
-  });
-  
-  // State for available tags
-  const [availableTags, setAvailableTags] = useState([]);
-  const [loadingTags, setLoadingTags] = useState(false);
-
   // Calculate user initials for avatar
   const getUserInitials = (name) => {
     if (!name) return 'U';
     const names = name.split(' ');
     const initials = names.map(n => n[0]).join('').toUpperCase();
     return initials.slice(0, 2);
-  };
-
-  // Function to fetch available tags
-  const fetchTags = async () => {
-    try {
-      setLoadingTags(true);
-      
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/graphql`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('authToken')}`
-        },
-        body: JSON.stringify({
-          query: `
-            query GetTags {
-              tags {
-                id
-                name
-              }
-            }
-          `
-        })
-      });
-
-      const result = await response.json();
-      
-      if (result.errors) {
-        throw new Error(result.errors[0]?.message || 'Error fetching tags');
-      }
-
-      setAvailableTags(result.data.tags || []);
-    } catch (err) {
-      console.error('Error fetching tags:', err);
-      // Default to some sample tags if API fails
-      setAvailableTags([
-        { id: '1', name: 'Food', color: '#ef4444' },
-        { id: '2', name: 'Transport', color: '#3b82f6' },
-        { id: '3', name: 'Entertainment', color: '#10b981' },
-        { id: '4', name: 'Shopping', color: '#8b5cf6' },
-        { id: '5', name: 'Utilities', color: '#f59e0b' }
-      ]);
-    } finally {
-      setLoadingTags(false);
-    }
-  };
-
-  // Function to toggle a tag selection
-  const toggleTagSelection = (tagId) => {
-    setFormData(prev => {
-      if (prev.tags.includes(tagId)) {
-        return {
-          ...prev,
-          tags: prev.tags.filter(id => id !== tagId)
-        };
-      } else {
-        return {
-          ...prev,
-          tags: [...prev.tags, tagId]
-        };
-      }
-    });
-  };
-
-  // Function to handle expense/income creation
-  const createTransaction = async () => {
-    try {
-      // Adjust amount based on type
-      const finalAmount = formData.type === 'expense' ? parseFloat(formData.amount) * -1 : parseFloat(formData.amount);
-      
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/graphql`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('authToken')}`
-        },
-        body: JSON.stringify({
-          query: `
-            mutation CreateExpense($amount: Float!, $date: String, $tagIds: [ID!]) {
-              createExpense(amount: $amount, date: $date, tagIds: $tagIds) {
-                id
-                amount
-                date
-                tags {
-                  id
-                  name
-                  icon
-                }
-              }
-            }
-          `,
-          variables: {
-            amount: finalAmount,
-            date: formData.date,
-            tagIds: formData.tags
-          }
-        })
-      });
-
-      const result = await response.json();
-      
-      if (result.errors) {
-        throw new Error(result.errors[0].message);
-      }
-
-      // Reset form and refetch data
-      setFormData({
-        amount: '',
-        description: '',
-        // category removed since we now use tags
-        tags: [],
-        type: 'expense',
-        date: new Date().toISOString().split('T')[0]
-      });
-
-      // Refetch dashboard data to reflect the new transaction
-      fetchFinancialData();
-      
-      return true;
-    } catch (err) {
-      setError(err.message);
-      console.error('Error creating transaction:', err);
-      return false;
-    }
   };
 
   // Fetch financial data from existing backend APIs
@@ -246,9 +95,15 @@ const Dashboard = () => {
       const incomes = allTransactions.filter(t => t.amount >= 0);
       const expenses = allTransactions.filter(t => t.amount < 0);
 
-      // Calculate aggregated data
-      const totalExpenses = expenses.reduce((sum, expense) => sum + Math.abs(expense.amount), 0);
-      const totalIncome = incomes.reduce((sum, income) => sum + income.amount, 0);
+      // Calculate aggregated data with NaN protection
+      const totalExpenses = expenses.reduce((sum, expense) => {
+        const amount = parseFloat(expense.amount);
+        return isNaN(amount) ? sum : sum + Math.abs(amount);
+      }, 0);
+      const totalIncome = incomes.reduce((sum, income) => {
+        const amount = parseFloat(income.amount);
+        return isNaN(amount) ? sum : sum + amount;
+      }, 0);
       const netSavings = totalIncome - totalExpenses;
 
       // Group data by month/week for the chart
@@ -305,7 +160,20 @@ const Dashboard = () => {
     const grouped = {};
 
     transactions.forEach(transaction => {
+      // Validate that amount is a valid number
+      const amount = parseFloat(transaction.amount);
+      if (isNaN(amount)) {
+        console.warn('Invalid amount found', transaction);
+        return; // Skip invalid transactions
+      }
+
       const date = new Date(transaction.date);
+      // Validate the date
+      if (isNaN(date.getTime())) {
+        console.warn('Invalid date found', transaction);
+        return; // Skip invalid transactions
+      }
+
       const monthKey = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}`;
 
       if (!grouped[monthKey]) {
@@ -313,24 +181,41 @@ const Dashboard = () => {
       }
 
       // Determine if it's income or expense
-      if (transaction.amount > 0) {
+      if (amount > 0) {
         // For this example, assuming positive amounts are incomes
-        grouped[monthKey].income += Math.abs(transaction.amount);
+        grouped[monthKey].income += Math.abs(amount);
       } else {
         // Negative amounts or categorized as expenses
-        grouped[monthKey].expenditure += Math.abs(transaction.amount);
+        grouped[monthKey].expenditure += Math.abs(amount);
       }
     });
 
     // Convert to the format expected by the chart
-    return Object.entries(grouped)
+    let result = Object.entries(grouped)
       .map(([date, values]) => ({
         date,
-        income: values.income,
-        expenditure: values.expenditure
+        income: values.income || 0,
+        expenditure: values.expenditure || 0
       }))
       .sort((a, b) => new Date(a.date) - new Date(b.date))
       .slice(-4); // Get last 4 months
+
+    // If no data was grouped, provide default data for the chart
+    if (result.length === 0) {
+      const now = new Date();
+      const lastMonths = [];
+      for (let i = 3; i >= 0; i--) {
+        const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        lastMonths.push({
+          date: `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}`,
+          income: 0,
+          expenditure: 0
+        });
+      }
+      result = lastMonths;
+    }
+
+    return result;
   };
 
   // Helper function to calculate trend
@@ -360,7 +245,8 @@ const Dashboard = () => {
       return { status: 'on-track', percentage: 0 };
     }
 
-    const percentageChange = ((currentMonthExpTotal - lastMonthExpTotal) / lastMonthExpTotal) * 100;
+    const percentageChange = (lastMonthExpTotal !== 0) ?
+      ((currentMonthExpTotal - lastMonthExpTotal) / lastMonthExpTotal) * 100 : 0;
     
     return {
       status: percentageChange > 5 ? 'negative' : percentageChange < -5 ? 'positive' : 'on-track',
@@ -400,7 +286,6 @@ const Dashboard = () => {
 
   useEffect(() => {
     fetchFinancialData();
-    fetchTags(); // Fetch tags when component loads
   }, []);
 
   // Desktop sidebar navigation
@@ -413,111 +298,15 @@ const Dashboard = () => {
       
       <Separator orientation="horizontal" className="w-8" />
       
-      <Drawer>
-        <DrawerTrigger asChild>
-          <Button
-            variant="secondary"
-            size="icon"
-            className="h-12 w-12 rounded-full"
-            aria-label="Add Transaction"
-          >
-            <Plus className="h-5 w-5" />
-          </Button>
-        </DrawerTrigger>
-        <DrawerContent className="max-w-md mx-auto px-4">
-          <div className="mx-auto w-full max-w-sm">
-            <DrawerHeader>
-              <DrawerTitle>Add Transaction</DrawerTitle>
-              <DrawerDescription>Create a new expense or income</DrawerDescription>
-            </DrawerHeader>
-            <div className="p-4">
-              <div className="grid gap-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="type">Type</Label>
-                    <Select value={formData.type} onValueChange={(value) => setFormData({...formData, type: value})}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Type" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="expense">Expense</SelectItem>
-                        <SelectItem value="income">Income</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="amount">Amount</Label>
-                    <Input 
-                      id="amount" 
-                      type="number" 
-                      placeholder="0.00"
-                      value={formData.amount}
-                      onChange={(e) => setFormData({...formData, amount: e.target.value})}
-                    />
-                  </div>
-                </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="description">Description</Label>
-                  <Input 
-                    id="description" 
-                    placeholder="Brief description"
-                    value={formData.description}
-                    onChange={(e) => setFormData({...formData, description: e.target.value})}
-                  />
-                </div>
-                
-                <div className="space-y-2">
-                  <Label>Tags</Label>
-                  <div className="flex flex-wrap gap-2 min-h-12 p-2 border border-input rounded-md">
-                    {loadingTags ? (
-                      <div className="text-sm text-muted-foreground">Loading tags...</div>
-                    ) : availableTags.length > 0 ? (
-                      availableTags.map(tag => (
-                        <button
-                          key={tag.id}
-                          type="button"
-                          className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                            formData.tags.includes(tag.id)
-                              ? 'bg-primary text-primary-foreground'
-                              : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
-                          }`}
-                          style={{}}
-                          onClick={(e) => {
-                            e.stopPropagation(); // Prevent closing drawer
-                            toggleTagSelection(tag.id);
-                          }}
-                        >
-                          {tag.name}
-                        </button>
-                      ))
-                    ) : (
-                      <div className="text-sm text-muted-foreground">No tags available</div>
-                    )}
-                  </div>
-                  <p className="text-xs text-muted-foreground">Select one or more tags to categorize this expense</p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="date">Date</Label>
-                  <Input 
-                    id="date" 
-                    type="date" 
-                    value={formData.date}
-                    onChange={(e) => setFormData({...formData, date: e.target.value})}
-                  />
-                </div>
-              </div>
-            </div>
-            <DrawerFooter>
-              <Button onClick={createTransaction}>Create Transaction</Button>
-              <DrawerClose asChild>
-                <Button variant="outline">Cancel</Button>
-              </DrawerClose>
-            </DrawerFooter>
-          </div>
-        </DrawerContent>
-      </Drawer>
+      <Button
+        variant="secondary"
+        size="icon"
+        className="h-12 w-12 rounded-full"
+        onClick={() => navigate('/add-expense')}
+        aria-label="Add Transaction"
+      >
+        <Plus className="h-5 w-5" />
+      </Button>
       
       <Button
         variant="secondary"
@@ -634,111 +423,15 @@ const Dashboard = () => {
       </div>
       
       {/* Floating Add button */}
-      <Drawer>
-        <DrawerTrigger asChild>
-          <Button
-            variant="secondary"
-            size="icon"
-            className="absolute bottom-16 left-1/2 transform -translate-x-1/2 w-14 h-14 rounded-full shadow-lg"
-            aria-label="Add Transaction"
-          >
-            <Plus className="h-6 w-6" />
-          </Button>
-        </DrawerTrigger>
-        <DrawerContent className="max-w-md mx-auto px-4">
-          <div className="mx-auto w-full max-w-sm">
-            <DrawerHeader>
-              <DrawerTitle>Add Transaction</DrawerTitle>
-              <DrawerDescription>Create a new expense or income</DrawerDescription>
-            </DrawerHeader>
-            <div className="p-4">
-              <div className="grid gap-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="type">Type</Label>
-                    <Select value={formData.type} onValueChange={(value) => setFormData({...formData, type: value})}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Type" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="expense">Expense</SelectItem>
-                        <SelectItem value="income">Income</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="amount">Amount</Label>
-                    <Input 
-                      id="amount" 
-                      type="number" 
-                      placeholder="0.00"
-                      value={formData.amount}
-                      onChange={(e) => setFormData({...formData, amount: e.target.value})}
-                    />
-                  </div>
-                </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="description">Description</Label>
-                  <Input 
-                    id="description" 
-                    placeholder="Brief description"
-                    value={formData.description}
-                    onChange={(e) => setFormData({...formData, description: e.target.value})}
-                  />
-                </div>
-                
-                <div className="space-y-2">
-                  <Label>Tags</Label>
-                  <div className="flex flex-wrap gap-2 min-h-12 p-2 border border-input rounded-md">
-                    {loadingTags ? (
-                      <div className="text-sm text-muted-foreground">Loading tags...</div>
-                    ) : availableTags.length > 0 ? (
-                      availableTags.map(tag => (
-                        <button
-                          key={tag.id}
-                          type="button"
-                          className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                            formData.tags.includes(tag.id)
-                              ? 'bg-primary text-primary-foreground'
-                              : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
-                          }`}
-                          style={{}}
-                          onClick={(e) => {
-                            e.stopPropagation(); // Prevent closing drawer
-                            toggleTagSelection(tag.id);
-                          }}
-                        >
-                          {tag.name}
-                        </button>
-                      ))
-                    ) : (
-                      <div className="text-sm text-muted-foreground">No tags available</div>
-                    )}
-                  </div>
-                  <p className="text-xs text-muted-foreground">Select one or more tags to categorize this expense</p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="date">Date</Label>
-                  <Input 
-                    id="date" 
-                    type="date" 
-                    value={formData.date}
-                    onChange={(e) => setFormData({...formData, date: e.target.value})}
-                  />
-                </div>
-              </div>
-            </div>
-            <DrawerFooter>
-              <Button onClick={createTransaction}>Create Transaction</Button>
-              <DrawerClose asChild>
-                <Button variant="outline">Cancel</Button>
-              </DrawerClose>
-            </DrawerFooter>
-          </div>
-        </DrawerContent>
-      </Drawer>
+      <Button
+        variant="secondary"
+        size="icon"
+        className="absolute bottom-16 left-1/2 transform -translate-x-1/2 w-14 h-14 rounded-full shadow-lg"
+        onClick={() => navigate('/add-expense')}
+        aria-label="Add Transaction"
+      >
+        <Plus className="h-6 w-6" />
+      </Button>
     </div>
   );
 
