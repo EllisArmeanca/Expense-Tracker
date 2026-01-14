@@ -1,20 +1,20 @@
 import React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
-const ExpensesPage = () => {
+const SettingsPage = () => {
   return (
     <div className="container mx-auto py-8">
       <Card>
         <CardHeader>
-          <CardTitle>Expenses</CardTitle>
-          <CardDescription>Manage your expenses here</CardDescription>
+          <CardTitle>Settings</CardTitle>
+          <CardDescription>Configure your account settings</CardDescription>
         </CardHeader>
         <CardContent>
-          <p>Track and categorize your expenses</p>
+          <p>Manage your preferences and account settings</p>
         </CardContent>
       </Card>
     </div>
   );
 };
 
-export default ExpensesPage;
+export default SettingsPage;

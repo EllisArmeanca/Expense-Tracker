@@ -6,12 +6,13 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { 
   Home, 
-  Settings, 
-  TrendingUp, 
-  TrendingDown, 
-  Activity, 
+  Settings,
+  TrendingUp,
+  TrendingDown,
+  Activity,
   BarChart,
-  Wallet, 
+  PieChart,
+  Wallet,
   Tag,
   User,
   DollarSign
@@ -20,18 +21,19 @@ import { ExpenditureIncomeChart } from '@/components/custom/ExpenditureIncomeCha
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 
-// Mock data for demonstration - in a real app, this would come from API
+// Mock data for demonstration
 const mockFinancialData = [
-  { date: 'Week 1', income: 5000, expenditure: 3000 },
-  { date: 'Week 2', income: 5200, expenditure: 2800 },
-  { date: 'Week 3', income: 4800, expenditure: 3200 },
-  { date: 'Week 4', income: 5300, expenditure: 3100 },
+  { date: 'Jan 1', income: 5000, expenditure: 3000 },
+  { date: 'Jan 8', income: 5200, expenditure: 2800 },
+  { date: 'Jan 15', income: 4800, expenditure: 3200 },
+  { date: 'Jan 22', income: 5300, expenditure: 3100 },
+  { date: 'Jan 29', income: 5100, expenditure: 2900 },
 ];
 
-const Dashboard = () => {
+const DashboardDraft = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [financialData] = useState(mockFinancialData);
+  const [financialData, setFinancialData] = useState(mockFinancialData);
   const [trendData, setTrendData] = useState({ status: 'on-track', percentage: 0 });
   const [budgetWarning, setBudgetWarning] = useState({ status: 'safe', amount: 0 });
 
@@ -39,20 +41,20 @@ const Dashboard = () => {
   const getUserInitials = (name) => {
     if (!name) return 'U';
     const names = name.split(' ');
-    const initials = names.map(n => n[0]).join('').toUpperCase();
+    const initials = names.map(n => n.charAt(0)).join('').toUpperCase();
     return initials.slice(0, 2);
   };
 
   // Simulate data fetching and calculations
   useEffect(() => {
     // In a real app, this would come from API
-    // Calculate trend data (compared to last month) - random demo values
+    // Calculate trend data (compared to last month)
     setTrendData({
       status: Math.random() > 0.5 ? 'on-track' : (Math.random() > 0.5 ? 'positive' : 'negative'),
-      percentage: Math.floor(Math.random() * 11) - 5 // Random between -5 and +5
+      percentage: Math.floor(Math.random() * 10) - 5 // Random between -5 and +5
     });
 
-    // Calculate budget warning - random demo values
+    // Calculate budget warning
     setBudgetWarning({
       status: Math.random() > 0.7 ? 'warning' : 'safe',
       amount: Math.random() > 0.7 ? Math.floor(Math.random() * 500) : 0
@@ -61,18 +63,18 @@ const Dashboard = () => {
 
   // Desktop sidebar navigation
   const DesktopNav = () => (
-    <div className="flex flex-col items-end space-y-4 p-4 h-full min-h-screen bg-muted border-l">
+    <div className="flex flex-col items-end space-y-4 p-4 h-full min-h-screen">
       <Avatar className="h-12 w-12">
-        <AvatarImage src={user?.avatar || ''} alt={user?.name || 'User'} />
+        <AvatarImage src={user?.avatar || ''} alt={user?.name} />
         <AvatarFallback>{getUserInitials(user?.name)}</AvatarFallback>
       </Avatar>
       
       <Separator orientation="horizontal" className="w-8" />
       
       <Button
-        variant="secondary"
+        variant="ghost"
         size="icon"
-        className="h-12 w-12 rounded-full"
+        className="h-12 w-12 rounded-full hover:bg-accent"
         onClick={() => navigate('/')}
         aria-label="Dashboard"
       >
@@ -86,10 +88,9 @@ const Dashboard = () => {
         onClick={() => navigate('/categories')}
         aria-label="Categories"
       >
-        {/* Circle and triangle icon combination */}
         <div className="flex items-center justify-center">
           <div className="w-3 h-3 rounded-full mr-1 bg-blue-500"></div>
-          <div className="w-0 h-0 border-l-[6px] border-l-transparent border-b-[10px] border-b-blue-500 border-r-[6px] border-r-transparent"></div>
+          <div className="w-3 h-3 rounded-full ml-1 bg-purple-500"></div>
         </div>
       </Button>
       
@@ -365,17 +366,19 @@ const Dashboard = () => {
         </div>
 
         {/* Desktop Navigation Sidebar */}
-        <DesktopNav />
+        <div className="w-24 bg-muted border-l">
+          <DesktopNav />
+        </div>
       </div>
 
       {/* Mobile Layout */}
       <div className="md:hidden">
         {/* Mobile Header - User Info */}
-        <div className="p-4 border-b bg-white sticky top-0 z-10">
+        <div className="p-4 border-b bg-white">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <Avatar className="h-10 w-10">
-                <AvatarImage src={user?.avatar || ''} alt={user?.name || 'User'} />
+                <AvatarImage src={user?.avatar || ''} alt={user?.name} />
                 <AvatarFallback>{getUserInitials(user?.name)}</AvatarFallback>
               </Avatar>
               <div>
@@ -441,4 +444,4 @@ const Dashboard = () => {
   );
 };
 
-export default Dashboard;
+export default DashboardDraft;

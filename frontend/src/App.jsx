@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { ThemeProvider } from '@/components/theme-provider';
 import Header from '@/components/header';
 import Home from '@/pages/Home';
@@ -12,6 +12,11 @@ import { Toaster } from '@/components/ui/toaster';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { NavigationStackProvider } from '@/contexts/NavigationStackContext';
 import ResponsiveLayout from '@/components/layout/ResponsiveLayout';
+import StackLayout from '@/components/layout/StackLayout';
+import NavigationStack from '@/components/custom/NavigationStack';
+import { cn } from '@/lib/utils';
+import ExpensesPage from '@/pages/Expenses';
+import SettingsPage from '@/pages/Settings';
 
 // Protected route component
 const ProtectedRoute = ({ children }) => {
@@ -113,7 +118,27 @@ function App() {
                   <Route path="/components" element={
                     <RequireAuth>
                       <ResponsiveLayout>
-                        <Components />
+                        <StackLayout>
+                          <Components />
+                        </StackLayout>
+                      </ResponsiveLayout>
+                    </RequireAuth>
+                  } />
+                  <Route path="/expenses" element={
+                    <RequireAuth>
+                      <ResponsiveLayout>
+                        <StackLayout>
+                          <ExpensesPage />
+                        </StackLayout>
+                      </ResponsiveLayout>
+                    </RequireAuth>
+                  } />
+                  <Route path="/settings" element={
+                    <RequireAuth>
+                      <ResponsiveLayout>
+                        <StackLayout>
+                          <SettingsPage />
+                        </StackLayout>
                       </ResponsiveLayout>
                     </RequireAuth>
                   } />
