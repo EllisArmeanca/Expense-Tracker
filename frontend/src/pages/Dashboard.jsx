@@ -16,7 +16,7 @@ import {
   User,
   DollarSign
 } from 'lucide-react';
-import { ExpenditureIncomeChart } from '@/components/custom/ExpenditureIncomeChart';
+import ExpenditureIncomeChart from '@/components/custom/ExpenditureIncomeChart';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider } from '@/components/theme-provider';
 import Header from '@/components/header';
 import Home from '@/pages/Home';
@@ -13,10 +13,13 @@ import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { NavigationStackProvider } from '@/contexts/NavigationStackContext';
 import ResponsiveLayout from '@/components/layout/ResponsiveLayout';
 import StackLayout from '@/components/layout/StackLayout';
-import NavigationStack from '@/components/custom/NavigationStack';
-import { cn } from '@/lib/utils';
 import ExpensesPage from '@/pages/Expenses';
 import SettingsPage from '@/pages/Settings';
+
+// Simple test component
+const TestComponent = () => {
+  return <div className="container mx-auto">Test Page Loaded Successfully</div>;
+};
 
 // Protected route component
 const ProtectedRoute = ({ children }) => {
@@ -88,7 +91,14 @@ function App() {
               <Header />
               <main className="flex-grow">
                 <Routes>
-                  <Route path="/" element={<Home />} />
+                  <Route path="/" element={
+                    <RedirectToDashboard />
+                  } />
+                  <Route path="/dashboard" element={
+                    <RequireAuth>
+                      <Navigate to="/" replace />
+                    </RequireAuth>
+                  } />
                   <Route path="/login" element={
                     <PublicRoute>
                       <Login />
@@ -98,13 +108,6 @@ function App() {
                     <PublicRoute>
                       <Register />
                     </PublicRoute>
-                  } />
-                  <Route path="/dashboard" element={
-                    <RequireAuth>
-                      <ResponsiveLayout>
-                        <Dashboard />
-                      </ResponsiveLayout>
-                    </RequireAuth>
                   } />
                   <Route path="/admin" element={
                     <RequireAuth>
@@ -152,5 +155,26 @@ function App() {
     </NavigationStackProvider>
   );
 }
+
+// Component to redirect to dashboard if authenticated, otherwise to login
+const RedirectToDashboard = () => {
+  const { isAuthenticated, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  return isAuthenticated ? (
+    <ResponsiveLayout>
+      <Dashboard />
+    </ResponsiveLayout>
+  ) : (
+    <Navigate to="/login" replace />
+  );
+};
 
 export default App;
