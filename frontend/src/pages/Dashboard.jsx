@@ -20,20 +20,15 @@ import ExpenditureIncomeChart from '@/components/custom/ExpenditureIncomeChart';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 
-// Mock data for demonstration - in a real app, this would come from API
-const mockFinancialData = [
-  { date: 'Week 1', income: 5000, expenditure: 3000 },
-  { date: 'Week 2', income: 5200, expenditure: 2800 },
-  { date: 'Week 3', income: 4800, expenditure: 3200 },
-  { date: 'Week 4', income: 5300, expenditure: 3100 },
-];
-
 const Dashboard = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [financialData] = useState(mockFinancialData);
+  const [financialData, setFinancialData] = useState([]);
+  const [summary, setSummary] = useState({ income: 0, expenses: 0, savings: 0, goalProgress: 0 });
   const [trendData, setTrendData] = useState({ status: 'on-track', percentage: 0 });
   const [budgetWarning, setBudgetWarning] = useState({ status: 'safe', amount: 0 });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   // Calculate user initials for avatar
   const getUserInitials = (name) => {
@@ -43,20 +38,213 @@ const Dashboard = () => {
     return initials.slice(0, 2);
   };
 
-  // Simulate data fetching and calculations
-  useEffect(() => {
-    // In a real app, this would come from API
-    // Calculate trend data (compared to last month) - random demo values
-    setTrendData({
-      status: Math.random() > 0.5 ? 'on-track' : (Math.random() > 0.5 ? 'positive' : 'negative'),
-      percentage: Math.floor(Math.random() * 11) - 5 // Random between -5 and +5
+  // Fetch financial data from existing backend APIs
+  const fetchFinancialData = async () => {
+    try {
+      setLoading(true);
+
+      // Get all financial transactions (using the actual backend schema)
+      const transactionsResponse = await fetch(`${import.meta.env.VITE_API_URL}/graphql`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+        },
+        body: JSON.stringify({
+          query: `
+            query GetExpenses {
+              expenses {
+                id
+                amount
+                date
+                category
+                createdAt
+              }
+            }
+          `
+        })
+      });
+
+      const transactionsResult = await transactionsResponse.json();
+
+      if (transactionsResult.errors) {
+        throw new Error(transactionsResult.errors[0]?.message || 'Error fetching transactions');
+      }
+
+      // Handle response - might be direct array or connection style
+      let allTransactions = [];
+      if (transactionsResult.data && transactionsResult.data.expenses) {
+        // Check if it's in connection format or direct array
+        if (Array.isArray(transactionsResult.data.expenses)) {
+          allTransactions = transactionsResult.data.expenses;
+        } else if (transactionsResult.data.expenses.edges) {
+          // Connection format
+          allTransactions = transactionsResult.data.expenses.edges.map(edge => edge.node);
+        } else {
+          // If it's an object with other properties
+          allTransactions = transactionsResult.data.expenses;
+        }
+      }
+
+      // Separate into incomes and expenses based on amount
+      const incomes = allTransactions.filter(t => t.amount >= 0);
+      const expenses = allTransactions.filter(t => t.amount < 0);
+
+      // Calculate aggregated data
+      const totalExpenses = expenses.reduce((sum, expense) => sum + Math.abs(expense.amount), 0);
+      const totalIncome = incomes.reduce((sum, income) => sum + income.amount, 0);
+      const netSavings = totalIncome - totalExpenses;
+
+      // Group data by month/week for the chart
+      const monthlyData = groupByMonthYear(allTransactions);
+
+      // Calculate trend based on comparison with previous period
+      const trend = calculateTrend(incomes, expenses);
+
+      // Calculate budget warning based on some criteria
+      const budget = calculateBudgetWarning(totalIncome, totalExpenses);
+
+      setFinancialData(monthlyData);
+      setSummary({
+        income: totalIncome,
+        expenses: totalExpenses,
+        savings: netSavings,
+        goalProgress: calculateGoalProgress(totalIncome, totalExpenses) // Assuming 80% of income saved as goal
+      });
+      setTrendData(trend);
+      setBudgetWarning(budget);
+    } catch (err) {
+      setError(err.message);
+      console.error('Error fetching dashboard data:', err);
+      // Fallback to mock data if API call fails
+      setFinancialData([
+        { date: 'Week 1', income: 5000, expenditure: 3000 },
+        { date: 'Week 2', income: 5200, expenditure: 2800 },
+        { date: 'Week 3', income: 4800, expenditure: 3200 },
+        { date: 'Week 4', income: 5300, expenditure: 3100 },
+      ]);
+      setSummary({
+        income: 20300,
+        expenses: 12100,
+        savings: 8200,
+        goalProgress: 78
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Helper function to group expenses/incomes by month/year
+  const groupByMonthYear = (transactions) => {
+    if (!transactions || transactions.length === 0) {
+      return [
+        { date: 'Week 1', income: 0, expenditure: 0 },
+        { date: 'Week 2', income: 0, expenditure: 0 },
+        { date: 'Week 3', income: 0, expenditure: 0 },
+        { date: 'Week 4', income: 0, expenditure: 0 },
+      ];
+    }
+
+    // Group by month and separate incomes and expenses
+    const grouped = {};
+
+    transactions.forEach(transaction => {
+      const date = new Date(transaction.date);
+      const monthKey = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}`;
+
+      if (!grouped[monthKey]) {
+        grouped[monthKey] = { income: 0, expenditure: 0 };
+      }
+
+      // Determine if it's income or expense
+      if (transaction.amount > 0) {
+        // For this example, assuming positive amounts are incomes
+        // You may need to adjust based on how your backend structures the data
+        grouped[monthKey].income += Math.abs(transaction.amount);
+      } else {
+        // Negative amounts or categorized as expenses
+        grouped[monthKey].expenditure += Math.abs(transaction.amount);
+      }
     });
 
-    // Calculate budget warning - random demo values
-    setBudgetWarning({
-      status: Math.random() > 0.7 ? 'warning' : 'safe',
-      amount: Math.random() > 0.7 ? Math.floor(Math.random() * 500) : 0
-    });
+    // Convert to the format expected by the chart
+    return Object.entries(grouped)
+      .map(([date, values]) => ({
+        date,
+        income: values.income,
+        expenditure: values.expenditure
+      }))
+      .sort((a, b) => new Date(a.date) - new Date(b.date))
+      .slice(-4); // Get last 4 months
+  };
+
+  // Helper function to calculate trend
+  const calculateTrend = (incomes, expenses) => {
+    if (incomes.length === 0 && expenses.length === 0) {
+      return { status: 'on-track', percentage: 0 };
+    }
+
+    // Calculate averages for current vs previous periods
+    const currentMonth = new Date();
+    const lastMonth = new Date();
+    lastMonth.setMonth(lastMonth.getMonth() - 1);
+
+    const currentMonthExpenses = expenses.filter(e =>
+      new Date(e.date).getMonth() === currentMonth.getMonth() &&
+      new Date(e.date).getFullYear() === currentMonth.getFullYear()
+    );
+    const lastMonthExpenses = expenses.filter(e =>
+      new Date(e.date).getMonth() === lastMonth.getMonth() &&
+      new Date(e.date).getFullYear() === lastMonth.getFullYear()
+    );
+
+    const currentMonthExpTotal = currentMonthExpenses.reduce((sum, e) => sum + e.amount, 0);
+    const lastMonthExpTotal = lastMonthExpenses.reduce((sum, e) => sum + e.amount, 0);
+
+    if (lastMonthExpTotal === 0) {
+      return { status: 'on-track', percentage: 0 };
+    }
+
+    const percentageChange = ((currentMonthExpTotal - lastMonthExpTotal) / lastMonthExpTotal) * 100;
+
+    return {
+      status: percentageChange > 5 ? 'negative' : percentageChange < -5 ? 'positive' : 'on-track',
+      percentage: Math.round(percentageChange)
+    };
+  };
+
+  // Helper function to calculate budget warning
+  const calculateBudgetWarning = (totalIncome, totalExpenses) => {
+    // Simple logic: if expenses are more than 90% of income, show warning
+    const ratio = totalExpenses / totalIncome;
+
+    if (isNaN(ratio) || totalIncome === 0) {
+      return { status: 'safe', amount: 0 };
+    }
+
+    if (ratio > 0.9) {
+      return {
+        status: 'warning',
+        amount: Math.max(0, totalExpenses - (totalIncome * 0.9))
+      };
+    }
+
+    return { status: 'safe', amount: 0 };
+  };
+
+  // Helper function to calculate goal progress
+  const calculateGoalProgress = (income, expenses) => {
+    // Example: goal is to save 20% of income
+    if (income <= 0) return 0;
+
+    const targetSaving = income * 0.2;
+    const actualSaving = income - expenses;
+
+    return Math.min(100, Math.round((actualSaving / targetSaving) * 100));
+  };
+
+  useEffect(() => {
+    fetchFinancialData();
   }, []);
 
   // Desktop sidebar navigation
@@ -187,6 +375,8 @@ const Dashboard = () => {
 
   // Trend Widget Component
   const TrendWidget = () => {
+    if (loading) return <div className="animate-pulse bg-gray-200 h-24 rounded-lg" />;
+    
     return (
       <Card className="md:col-span-2">
         <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -229,6 +419,8 @@ const Dashboard = () => {
 
   // Budget Warning Widget
   const BudgetWarningWidget = () => {
+    if (loading) return <div className="animate-pulse bg-gray-200 h-32 rounded-lg" />;
+    
     return (
       <Card>
         <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -266,6 +458,54 @@ const Dashboard = () => {
     );
   };
 
+  if (loading && financialData.length === 0) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Card className="p-6 m-4">
+          <CardHeader>
+            <CardTitle>Error Loading Dashboard</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-red-500 mb-4">Failed to load dashboard data: {error}</p>
+            <Button onClick={fetchFinancialData}>Retry</Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (loading && financialData.length === 0) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Card className="p-6 m-4">
+          <CardHeader>
+            <CardTitle>Error Loading Dashboard</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-red-500 mb-4">Failed to load dashboard data: {error}</p>
+            <Button onClick={fetchFinancialData}>Retry</Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background">
       {/* Desktop Layout */}
@@ -279,7 +519,7 @@ const Dashboard = () => {
                 <DollarSign className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">$15,230.00</div>
+                <div className="text-2xl font-bold">${summary.income.toLocaleString()}</div>
                 <p className="text-xs text-muted-foreground">+20.1% from last month</p>
               </CardContent>
             </Card>
@@ -295,7 +535,7 @@ const Dashboard = () => {
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">$8,432.00</div>
+                <div className="text-2xl font-bold">${summary.expenses.toLocaleString()}</div>
                 <p className="text-xs text-muted-foreground">+12.5% from last month</p>
               </CardContent>
             </Card>
@@ -309,7 +549,7 @@ const Dashboard = () => {
                 </svg>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">$6,798.00</div>
+                <div className="text-2xl font-bold">${summary.savings.toLocaleString()}</div>
                 <p className="text-xs text-muted-foreground">+8.2% from last month</p>
               </CardContent>
             </Card>
@@ -322,7 +562,7 @@ const Dashboard = () => {
                 </svg>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">78%</div>
+                <div className="text-2xl font-bold">{summary.goalProgress}%</div>
                 <p className="text-xs text-muted-foreground">of target achieved</p>
               </CardContent>
             </Card>
@@ -397,7 +637,7 @@ const Dashboard = () => {
                 <CardTitle className="text-sm font-medium">Income</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-xl font-bold">$15,230</div>
+                <div className="text-xl font-bold">${summary.income.toLocaleString()}</div>
                 <p className="text-xs text-green-500">+20.1%</p>
               </CardContent>
             </Card>
@@ -407,7 +647,7 @@ const Dashboard = () => {
                 <CardTitle className="text-sm font-medium">Expenses</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-xl font-bold">$8,432</div>
+                <div className="text-xl font-bold">${summary.expenses.toLocaleString()}</div>
                 <p className="text-xs text-red-500">+12.5%</p>
               </CardContent>
             </Card>
